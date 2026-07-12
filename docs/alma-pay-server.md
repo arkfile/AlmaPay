@@ -2,7 +2,7 @@
 
 # BTCPay Server on AlmaLinux 10+ (rootless Podman)
 
-This document describes the operator protocol for self-hosted BTCPay Server 2.4+ on AlmaLinux 10+. The stack uses Bitcoin Core 30+, rootless Podman only, and a dedicated `almapay` system account that cannot log in over SSH. It listens on a loopback high port behind host-installed Caddy and can include a pruned Bitcoin node, a pruned Monero node, and optional Boltz (Lightning) and Stripe (card) plugins. One BTCPay instance can host multiple stores with independent API keys and webhooks per store.
+This document describes the operator protocol for self-hosted BTCPay Server 2.4+ on AlmaLinux 10+. The initial supported deployment is mainnet on x86-64-v3. The stack uses Bitcoin Core 30+, rootless Podman only, and a dedicated `almapay` system account that cannot log in over SSH. It listens on the fixed `127.0.0.1:8080` upstream behind host-installed Caddy and ships reviewed profiles for a pruned Bitcoin node, a pruned Monero node, Boltz nodeless Lightning, and Stripe Payments. Every payment method remains disabled until its own readiness gate passes. One BTCPay instance can host multiple stores with independent API keys and webhooks per store.
 
 The protocol deliberately avoids upstream one-click installers that assume Debian package managers, a privileged container runtime, or binding public ports 80 and 443 inside the payment stack. Instead it uses the upstream [btcpayserver-docker](https://github.com/btcpayserver/btcpayserver-docker) repository as a compose generator and operator tooling source, while keeping runtime ownership on the `almapay` user.
 
@@ -12,7 +12,7 @@ The implementation contract for the separate AlmaPay repository is in [`alma-pay
 
 The payment VPS is a single-purpose host. Day-to-day container operations run as the unprivileged `almapay` user through rootless Podman. Containers do not receive privileged capabilities, host root bind mounts, or access to the host SSH trust store. Administrative login uses a separate operator account over SSH; `almapay` exists only to own data directories, pull images, and run compose under user systemd with linger enabled.
 
-TLS termination and public HTTP ports live on host-installed Caddy outside the BTCPay compose stack. BTCPay itself binds a high port on loopback (for example `127.0.0.1:8080`), which rootless Podman can expose without capability adjustments. Alternate reverse proxies are future profiles and are not part of the initial supported configuration.
+TLS termination and public HTTP ports live on host-installed Caddy outside the BTCPay compose stack. BTCPay itself binds the fixed initial-profile listener `127.0.0.1:8080`, which rootless Podman can expose without capability adjustments. Alternate listeners and reverse proxies are future profiles and are not part of the initial supported configuration.
 
 Rootless Podman means Podman and the container lifecycle run under the unprivileged `almapay` host account. A process may have UID 0 inside its container namespace, but that UID maps through `almapay`'s user namespace and is not host root. Never run `sudo podman` or `podman` from a root shell for this stack. Operator maintenance uses `sudo -u almapay -H` to drop into the runtime user (`almapay` has `/sbin/nologin`, so you cannot SSH in directly). That is user switching, not a privileged container runtime. Host bootstrap, active Caddy installation, and host recovery legitimately use root; the compose stack and AlmaPay application backup do not.
 
@@ -24,7 +24,7 @@ What we keep from upstream: the fragment-based compose generator (`build.sh` log
 
 ## Architecture
 
-Public clients reach `https://pay.example.com` on Caddy. Caddy reverse-proxies to BTCPay listening on `127.0.0.1:8080`. The reference compose stack includes BTCPay Server 2.4+, PostgreSQL, NBXplorer, Bitcoin Core 30+, pruned `bitcoind`, pruned `monerod`, and supporting services. No reverse-proxy container ships inside the stack (`BTCPAYGEN_REVERSEPROXY=none`). Omit Monero or plugins by changing generator fragments and skipping the corresponding setup phases.
+Public clients reach `https://pay.example.com` on Caddy. Caddy reverse-proxies to BTCPay listening on `127.0.0.1:8080`. The reference compose stack includes BTCPay Server 2.4+, PostgreSQL, NBXplorer, Bitcoin Core 30+, pruned `bitcoind`, pruned `monerod`, and supporting services. No reverse-proxy container ships inside the stack (`BTCPAYGEN_REVERSEPROXY=none`). The first release must implement and test Monero, Boltz, and Stripe profiles even when an operator leaves one or more methods disabled.
 
 Lightning payments can be enabled through the Boltz plugin in nodeless mode, which accepts Lightning without running Core Lightning or LND in the compose file. On-chain Bitcoin and Monero use the local pruned nodes when those cryptos are included. Card payments can use the Stripe Payments plugin; checkout UI remains on BTCPay pages.
 
@@ -32,19 +32,19 @@ Integrating applications talk to BTCPay through the Greenfield API and receive s
 
 AlmaPay is application-agnostic. Arkfile is the first reference integration used to prove deployment, checkout, Greenfield API, and webhook behavior, but it is not embedded in or required by the AlmaPay runtime. One deployment may serve multiple independent applications through isolated BTCPay stores and credentials.
 
-The initial supported profile is one AlmaLinux 10+ host with Caddy, a local pruned Bitcoin node, and optional local pruned Monero. Other RHEL-family distributions, external RPC providers, split-host chain nodes, alternate reverse proxies, and other modes require future profiles with their own implementation and tests.
+The initial supported profile is mainnet on one AlmaLinux 10+ x86-64-v3 host with Caddy, a local pruned Bitcoin node, and local pruned Monero. Regtest and mocks are development fixtures, not deployment profiles. Other networks, architectures, RHEL-family distributions, external RPC providers, split-host chain nodes, alternate reverse proxies, and other modes require future profiles with their own implementation and tests.
 
 ## Configuration invariants
 
-Replace `pay.example.com` with your real hostname and use that same value everywhere: DNS, runtime `.env` (`BTCPAY_HOST`), and the Caddy site block. Keep `BTCPAY_PROTOCOL=https` when TLS terminates at Caddy. Set `NOREVERSEPROXY_HTTP_PORT=127.0.0.1:8080`; a bare `8080` can publish on every host interface. Keep `NBITCOIN_NETWORK` consistent with wallet policy. Generator `BTCPAYGEN_*` variables define which services appear in compose; runtime `.env` defines how BTCPay presents itself on the network.
+Replace `pay.example.com` with your real hostname and use that same value everywhere: DNS, runtime `.env` (`BTCPAY_HOST`), and the Caddy site block. Keep `BTCPAY_PROTOCOL=https` when TLS terminates at Caddy. Set `NOREVERSEPROXY_HTTP_PORT=127.0.0.1:8080`; a bare `8080` can publish on every host interface. The supported deployment sets `NBITCOIN_NETWORK=mainnet`. That variable does not select Monero's network; the stock Monero fragment is also mainnet-specific. Generator `BTCPAYGEN_*` variables define which services appear in compose; runtime `.env` defines how BTCPay presents itself on the network.
 
 The upstream `btc` crypto definition currently selects `bitcoin.yml`, which is pinned below Bitcoin Core 30. A compliant deployment must exclude that fragment and add `bitcoincore.yml`, then inspect the rendered compose and the running daemon version. An image tag alone is not proof of the running version.
 
 ## Prerequisites
 
-Provision a currently supported AlmaLinux 10 VPS on KVM; AlmaLinux 10.2 is the initial tested reference. OpenVZ-based VPS plans are a poor fit for chain nodes. Attach DNS for your BTCPay hostname to the host. Size the machine generously: plan for roughly 4 vCPU, 8 GB RAM, and 400 GB SSD. Pruned Bitcoin with `opt-save-storage-s` uses on the order of 50 GB. The upstream Monero fragment is pruned, but still requires substantial growing storage; leave margin for PostgreSQL, plugin wallets, temporary update capacity, backups, and logs.
+Provision a currently supported AlmaLinux 10 VPS on KVM; AlmaLinux 10.2 x86_64 with x86-64-v3 CPU support is the initial tested target. OpenVZ-based VPS plans are a poor fit for chain nodes. Attach DNS for your BTCPay hostname to the host. Size the machine generously: plan for at least roughly 4 vCPU, 8 GB RAM, and 400 GB SSD. The first target host has 6 KVM vCPUs, 17 GiB RAM, and approximately 1 TB of non-rotational XFS storage, but those observations are not a substitute for clean-host installation and disk-performance tests. Pruned Bitcoin with `opt-save-storage-s` uses on the order of 50 GB. The upstream Monero fragment is pruned, but still requires substantial growing storage; leave margin for PostgreSQL, plugin wallets, temporary update capacity, backups, and logs.
 
-AlmaLinux 10 uses cgroup v2 and SELinux by default. Keep SELinux enforcing. On x86 hosts, verify that the selected AlmaLinux architecture is compatible with the VPS CPU; normal AlmaLinux 10 x86-64 packages target x86-64-v3, while the alternate x86-64-v2 distribution has third-party package limitations.
+AlmaLinux 10 uses cgroup v2 and SELinux by default. Keep SELinux enforcing. The initial profile requires `uname -m` and the RPM architecture to report `x86_64`, and glibc hardware-capability diagnostics to report `x86-64-v3 (supported, searched)`. XFS used for `/var/lib/almapay` must report `ftype=1`. A reflink-enabled XFS filesystem requires a reviewed non-copy-on-write procedure if a swapfile is added; do not publish a naive sparse or reflinked swapfile recipe.
 
 Install Caddy on the host (package or static binary) so it can bind 443 and proxy to loopback. Caddy may run as its own unprivileged user or via a small system unit; it is outside the scope of the `almapay` compose project.
 
@@ -76,7 +76,7 @@ Enable lingering so user services start at boot without an interactive session:
 sudo loginctl enable-linger almapay
 ```
 
-Configure host firewall to allow HTTPS to Caddy while keeping the BTCPay high port local-only (default firewalld: allow `https` service; do not publish `8080` publicly).
+The initial profile uses firewalld. If it is absent or inactive, bootstrap must record the current SSH listener, install and enable firewalld without closing the operator's session, preserve that exact SSH port, allow HTTP and HTTPS to Caddy, and keep `8080` and all internal ports closed publicly. It must inspect and preserve unrelated existing policy rather than replacing it wholesale.
 
 Record the runtime user id for later systemd and operator commands:
 
@@ -235,11 +235,11 @@ Monero on BTCPay is server-wide: all stores on one instance share the same Moner
 
 Enable BTC and XMR payment methods on each store after wallets are ready and nodes are sufficiently synced.
 
-## Phase 6 — Plugins (optional: Boltz and Stripe)
+## Phase 6 — Shipped, independently gated plugins
 
 Open **Plugins → Manage Plugins** in the BTCPay UI. Skip this phase if on-chain BTC (and XMR, if enabled) is enough.
 
-Install **Boltz** (BoltzExchange). Restart the stack when prompted:
+The first release ships tested Monero, Boltz, and Stripe profiles, but installation support does not authorize automatic enablement. Install **Boltz** (BoltzExchange) only after its pinned release and custody prerequisites pass. Restart the stack when prompted:
 
 ```bash
 sudo -u almapay -H XDG_RUNTIME_DIR=/run/user/$(id -u almapay) systemctl --user restart almapay.service
@@ -247,7 +247,7 @@ sudo -u almapay -H XDG_RUNTIME_DIR=/run/user/$(id -u almapay) systemctl --user r
 
 Choose **Nodeless** mode during setup unless you later add a local Lightning implementation to the compose file. Follow the plugin wizard to create or import a Liquid wallet, review fees, and optionally configure chain swaps from Liquid BTC to on-chain BTC with a maximum Liquid balance you accept. Enable Lightning as a payment method on each store. Boltz does not support zero-amount invoices.
 
-Install **Stripe Payments** only after confirming its exact release declares compatibility with the pinned BTCPay 2.4.x version. Restart again using the same command. Configure Stripe API keys and enabled payment methods separately for each store. Card and wallet UI stays on BTCPay checkout pages.
+Install **Stripe Payments** only after confirming its exact release declares compatibility with the pinned BTCPay 2.4.x version. Restart again using the same command. Configure Stripe API keys and enabled payment methods separately for each store. Card and wallet UI stays on BTCPay checkout pages. Keep test and live credentials separate, complete test mode first, and require explicit operator approval before any live-mode payment.
 
 BTCPay 2.4 no longer supports LNBank, LNDHub, Lightning Charge, or the deprecated Shopify Scripts integration. Do not configure them. BTCPay moved to .NET 10 beginning with 2.3.7, so query the live plugin manifest, pin each compatible Boltz, Stripe, and Monero plugin release, and test restart behavior. After plugin changes, always restart through user systemd and verify plugin status in the UI before taking production traffic.
 
@@ -256,6 +256,8 @@ BTCPay 2.4 no longer supports LNBank, LNDHub, Lightning Charge, or the deprecate
 A single BTCPay instance supports many stores and consumer applications. Create a distinct store for each application and environment. For each store, note the Store ID, issue a least-privilege Greenfield API key with the required invoice permissions, and register a webhook pointing at that integrator's public HTTPS endpoint. Save the webhook signing secret the UI displays; the integrator should verify the provider signature header on delivery (for example `BTCPay-Sig`). Use separate API keys, store IDs, and webhook secrets per store so one application or test environment cannot read, mutate, or settle against another application's records. Confirm webhook delivery from the BTCPay UI before relying on automated settlement.
 
 AlmaPay does not define an application's invoice metadata, fulfillment, ledger, or webhook route. Each integrator owns those policies and its application-level idempotency. Multiple applications on one deployment must be under one trusted server operator; store credentials do not isolate mutually distrustful administrators, and server-wide plugins and logging policy remain shared. Monero remains a custody exception: stores on the same BTCPay deployment share server-level wallet view material even when application credentials and invoice records are isolated. Use separate deployments where administration, custody, or host-level privacy policy must be independent.
+
+The Arkfile reference integration has additional preconditions before live enablement: canonical `100,000,000` microcents-per-USD conversion, exactly two-decimal top-ups, `LowMediumSpeed` invoice policy, a normalized public HTTPS BTCPay origin, bounded and store-validated signed webhooks, recoverable local-to-provider invoice association, pending-invoice remote reconciliation, replay and concurrency idempotency, and no username or financial-state logging. These are Arkfile responsibilities verified by the AlmaPay acceptance procedure; AlmaPay must not implement or compensate for them.
 
 ## Phase 8 — Operations
 
@@ -270,7 +272,7 @@ sudo -u almapay -H XDG_RUNTIME_DIR=/run/user/$(id -u almapay) systemctl --user r
 
 Backups use two explicit recovery domains:
 
-1. `almapay backup` runs as `almapay`. It creates a consistent PostgreSQL dump; service-aware or Podman-aware exports of BTCPay, plugin, and wallet state; protected application configuration and secrets; generated Compose; `upstream.lock`; the user systemd unit; and the non-secret AlmaPay-owned Caddy source template. It must not use root to copy live rootless Podman storage. Chain data is reconstructible and excluded by default. The resulting artifact is checksummed, encrypted, verified, and transferred off-host.
+1. `almapay backup` runs as `almapay`. It creates a consistent PostgreSQL dump; service-aware or Podman-aware exports of BTCPay, plugin, and wallet state; protected application configuration and secrets; generated Compose; `upstream.lock`; the user systemd unit; and the non-secret AlmaPay-owned Caddy source template. It must not use root to copy live rootless Podman storage. Chain data is reconstructible and excluded by default. The resulting artifact is checksummed, encrypted, and verified. The initial off-host procedure may use an interactive `arkfile-client` upload to a separate Arkfile host and storage failure domain, but Arkfile must not be the only retained copy. AlmaPay must not automate Arkfile credentials until secure noninteractive credential input is implemented and reviewed (WIP).
 2. Ordinary root-owned host backup tooling captures only the required host recovery state: active Caddy configuration and systemd overrides, root-owned DNS-provider credentials if applicable, the `almapay` UID and its specific subordinate-ID allocations, linger state, relevant firewall state, AlmaPay-specific SELinux customization, and package inventory. Its manifest references the matching AlmaPay application-backup identifier and checksums. It does not indiscriminately copy SSH keys, unrelated `/etc` state, live Podman storage, or reconstructible ACME certificates.
 
 A root-owned timer or established backup system may coordinate the process by invoking `almapay backup` through `sudo -u almapay`, waiting for the verified encrypted application artifact, and then creating the host recovery bundle. Root never invokes Podman. The two bundles may have separate encryption keys and access controls.
@@ -281,13 +283,13 @@ Disk monitoring is critical on pruned-BTC plus Monero layouts. If space tightens
 
 SELinux: Alma enforces SELinux by default. Rootless Podman usually labels volume content correctly; if bind-mounting host paths into containers, use the `:Z` relabel flag on compose volumes or set appropriate `container_file_t` contexts on host directories.
 
-Security hygiene: do not enable BTCPay's optional host SSH integration on this layout. Restrict operator SSH keys. Separate Stripe live and test credentials across stores. Treat Monero view-only keys as confidential.
+Security hygiene: do not enable BTCPay's optional host SSH integration on this layout. Restrict operator SSH keys. Separate Stripe live and test credentials across stores. Treat Monero view-only keys as confidential. The Arkfile profile leaves Caddy access logging disabled and must prove that the pinned Caddy, BTCPay, journald, and AlmaPay diagnostic configuration does not retain client IP addresses. Caddy adds forwarding headers by default, so the implementation must test and document the exact reviewed header policy rather than assuming that disabled Caddy access logs are sufficient.
 
 ## Version and runtime verification
 
 The deployment is not ready merely because containers are running. Verification must confirm AlmaLinux major version 10 or later, cgroup v2, SELinux state, rootless user namespaces, user systemd, the selected Compose provider, loopback-only publication, valid public TLS, chain synchronization, disk and inode capacity, and plugin compatibility.
 
-Query the running processes rather than trusting image tags. Bitcoin Core's numeric version must be at least `300000`, BTCPay's semantic version must be at least `2.4.0`, and NBXplorer must be connected and synchronized with the selected node. If an operator needs all Bitcoin secondary indexes rebuilt, use and plan for a full `-reindex`; `-reindex-chainstate` does not rebuild indexes such as `txindex`.
+Query the running processes rather than trusting image tags. Bitcoin Core's numeric version must be at least `300000`, BTCPay's semantic version must be at least `2.4.0`, and NBXplorer must be connected and synchronized with the selected node. `almapay verify --production` must bind its non-secret readiness report to the active configuration and lockfile hashes. A human operator then approves each payment method separately after custody, synchronization, backup, restore, and low-value real-payment checks. If an operator needs all Bitcoin secondary indexes rebuilt, use and plan for a full `-reindex`; `-reindex-chainstate` does not rebuild indexes such as `txindex`.
 
 AlmaLinux 10.2 is the initial supported and tested reference. Later AlmaLinux 10 minor releases and future major releases require capability checks and integration testing rather than blind acceptance based only on the version number.
 
@@ -297,7 +299,7 @@ This is not an officially supported BTCPay deployment shape. Upstream tests focu
 
 Monero remains one wallet per server*. Boltz nodeless mode routes Lightning through Liquid before optional on-chain settlement. Stripe plugin availability and version pins depend on the BTCPay release channel you deploy.
 
-When in doubt, validate on a test store and test webhook delivery before accepting mainnet funds.
+When in doubt, validate on a separate store and test webhook delivery before accepting mainnet funds. A human operator must perform the final low-value BTC, XMR, Boltz, Stripe test-mode, and explicitly authorized Stripe live-mode payment checks with their own funds. Automated agents must never conduct those transactions.
 
 ### `*` Monero Multi-Store Issues
 

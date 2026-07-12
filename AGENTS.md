@@ -63,19 +63,21 @@ Do not modify Arkfile or another consumer application from this repository.
 
 The initial supported deployment profile is:
 
-- AlmaLinux 10.0 or later, with AlmaLinux 10.2 as the first tested release.
+- Mainnet on AlmaLinux 10.0 or later, with AlmaLinux 10.2 on x86_64 and x86-64-v3 as the first tested platform.
 - Host-installed Caddy as the only public HTTP/TLS entry point.
 - A local pruned Bitcoin node.
-- Optional local pruned Monero.
+- A shipped local-pruned Monero profile.
+- Shipped, independently gated Boltz nodeless Lightning and Stripe Payments profiles.
 - A single-host payment stack.
 
-Other RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other modes are future profiles. Do not describe them as supported until they have explicit implementation, security validation, and integration tests.
+Regtest and mocks are test fixtures, not supported deployment profiles. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other modes are future profiles. Do not describe them as supported until they have explicit implementation, security validation, and integration tests.
 
 ## Required platform assumptions
 
 The implementation must preserve these minimum versions:
 
 - AlmaLinux 10.0 or later.
+- x86_64 with x86-64-v3 CPU support for the initial profile.
 - BTCPay Server 2.4.0 or later.
 - Bitcoin Core 30.0 or later.
 - Rootless Podman with cgroup v2.
@@ -91,6 +93,7 @@ Preserve these invariants in every change:
 - Podman and the container lifecycle execute under the unprivileged `almapay` host account.
 - Podman is never run as root.
 - BTCPay is published only on a loopback high port.
+- The initial data root and listener are fixed at `/var/lib/almapay` and `127.0.0.1:8080`.
 - Host Caddy is the only public HTTP/TLS entry point.
 - PostgreSQL, NBXplorer, Bitcoin RPC, Monero RPC, and wallet RPC ports are never publicly published.
 - Containers are never privileged.
@@ -100,7 +103,7 @@ Preserve these invariants in every change:
 - BTCPay host SSH integration remains disabled.
 - SELinux is not disabled or weakened to make deployment easier.
 - Secrets are never committed, printed, logged, invented, or passed in process arguments.
-- Mainnet payment methods remain disabled until production-readiness checks pass.
+- AlmaPay automation never enables mainnet payment methods. Each method remains disabled until its own synchronization, custody, backup, restore, plugin, and operator-run real-payment checks pass.
 
 Rootless Podman does not guarantee that every process has a nonzero UID inside its container namespace. The invariant is that container UIDs are mapped through the unprivileged `almapay` user namespace and do not become host root.
 
@@ -128,3 +131,5 @@ sudo podman compose
 ```
 
 Never connect to or modify a production host without explicit authorization. Avoid unattended wallet or mainnet custody actions. Do not create Git commits unless the operator explicitly requests one. Do not use emojis in repository content.
+
+Automated agents must never initiate real-money BTC, XMR, Boltz, or Stripe live-mode payments. They may implement and verify the operator procedure, but the human operator supplies authorization, credentials, custody decisions, and funds.

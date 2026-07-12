@@ -8,7 +8,7 @@ AlmaPay is not an application billing engine, account ledger, payment gateway ab
 
 The first production target is an already-provisioned VPS. Repository implementation and local or disposable-VM testing do not authorize access to that VPS. Agents must not attempt to access or modify the VPS directly. Agents must instead build automation, tooling, scripts, and instructions that a human administrator or developer can use.
 
-The initial supported deployment profile is deliberately narrow: AlmaLinux 10+, one host, host-installed Caddy, a local pruned Bitcoin node, and optional local pruned Monero. Other RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other deployment modes are future profiles. They must not be described as supported until they have explicit implementation, security validation, and integration tests.
+The initial supported deployment profile is deliberately narrow: mainnet on one AlmaLinux 10+ x86-64-v3 host, host-installed Caddy, a local pruned Bitcoin node, and local pruned Monero. The first implementation must ship the reviewed Monero, Boltz nodeless Lightning, and Stripe Payments profiles, but every payment method remains disabled until its own production-readiness gate passes. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other deployment modes are future profiles. They must not be described as supported until they have explicit implementation, security validation, and integration tests.
 
 The companion operator runbook is [`alma-pay-server.md`](alma-pay-server.md).
 
@@ -17,6 +17,7 @@ The companion operator runbook is [`alma-pay-server.md`](alma-pay-server.md).
 The implementation must assume:
 
 - AlmaLinux 10.0 or later. AlmaLinux 10.2 is the initial tested reference.
+- x86-64-v3 on x86_64. The first reference host is a KVM VPS; architecture and CPU capabilities must be checked on every install and restore.
 - BTCPay Server 2.4.0 or later.
 - Bitcoin Core 30.0 or later.
 - Rootless Podman with cgroup v2.
@@ -24,9 +25,10 @@ The implementation must assume:
 - SELinux enforcing in production.
 - Host-installed Caddy for public TLS.
 - PostgreSQL and NBXplorer inside the payment stack.
-- A pruned local Bitcoin node by default.
-- An optional pruned local Monero node.
-- Optional Boltz nodeless Lightning and Stripe Payments plugins.
+- Mainnet as the only supported production network. Regtest and mocks are test fixtures, not deployment profiles.
+- A pruned local Bitcoin node.
+- A pruned local Monero node.
+- Shipped, independently gated profiles for Boltz nodeless Lightning and Stripe Payments.
 - Greenfield API and signed HTTPS webhooks for application integration.
 
 Version floors are not permission to float dependencies. Every production release must pin exact commits, image digests, package versions, and plugin releases in `upstream.lock`.
@@ -39,7 +41,7 @@ AlmaPay must turn a clean, supported AlmaLinux host into a reproducible and oper
 
 - Podman and the container lifecycle run under the dedicated unprivileged `almapay` host account; container UIDs map through its rootless user namespace and never become host root.
 - No AlmaPay runtime command invokes Podman as root.
-- BTCPay is published only on `127.0.0.1:8080`.
+- BTCPay is published only on the fixed initial-profile listener `127.0.0.1:8080`.
 - Only host Caddy binds public HTTP and HTTPS ports.
 - Database, chain RPC, wallet RPC, and NBXplorer ports are never publicly published.
 - The selected BTCPay process reports version 2.4.0 or later.
@@ -47,7 +49,7 @@ AlmaPay must turn a clean, supported AlmaLinux host into a reproducible and oper
 - Generated Compose is inspected before use rather than trusted implicitly.
 - Updates are lockfile-driven and start with a verified backup.
 - Secrets are never committed, printed, placed in process arguments, or exposed by diagnostics.
-- Mainnet payment methods remain disabled until synchronization, backup, restore, and test-store checks pass.
+- AlmaPay automation never enables a mainnet payment method automatically. Each method remains disabled until synchronization, custody, backup, restore, plugin, and operator-run payment checks for that method pass.
 
 Repository implementation is complete only when a clean AlmaLinux 10.2 VM can be installed repeatedly, survive reboot, pass security checks, complete a test payment flow, and restore successfully from backup.
 
@@ -64,7 +66,7 @@ AlmaPay owns:
 - BTCPay, PostgreSQL, NBXplorer, Bitcoin, Monero, and supporting containers.
 - AlmaPay-owned Caddy source rendering, validation, and root installation guidance.
 - User systemd persistence.
-- Firewall validation and optional safe configuration.
+- Firewalld validation and safe initial-profile configuration.
 - Version, health, synchronization, exposure, and integration diagnostics.
 - Lockfile-driven updates.
 - Backup and restoration.
@@ -94,7 +96,7 @@ Consumer applications may implement payments and fulfillment differently. AlmaPa
 
 Arkfile remains the source of truth for invoice ownership, account balances, PAYG metering, and credit-ledger idempotency. Arkfile stores USD using `100,000,000` microcents per USD. A successful one-time top-up credits the local `user_credits` balance and inserts a positive `credit_transactions` entry. Storage usage is metered separately: hourly ticks add microcents to `storage_usage_accumulator`, and the daily sweep subtracts accumulated usage from the user's balance and inserts a negative usage transaction. Upload policy may block a user whose balance has crossed the configured negative limit.
 
-AlmaPay must not reproduce, reinterpret, or modify the Arkfile ledger. It must only provide reliable BTCPay invoice creation, status lookup, checkout, and webhook delivery. Arkfile currently contains a known conversion concern around the PAYG negative-balance USD parser. AlmaPay must not compensate for an Arkfile conversion bug by changing payment amounts or metadata. Arkfile must consistently use its canonical `100,000,000` microcents-per-USD unit.
+AlmaPay must not reproduce, reinterpret, or modify the Arkfile ledger. It must only provide reliable BTCPay invoice creation, status lookup, checkout, and webhook delivery. At the planning baseline, Arkfile contains a known conversion concern around the PAYG negative-balance USD parser; Arkfile production acceptance must verify that it has been corrected and regression-tested (WIP). AlmaPay must never compensate for an Arkfile conversion bug by changing payment amounts or metadata. Arkfile must consistently use its canonical `100,000,000` microcents-per-USD unit.
 
 ## Privacy boundary
 
@@ -125,7 +127,6 @@ ALMAPAY_MONERO_MODE=local-pruned
 ALMAPAY_LIGHTNING_MODE=boltz-nodeless
 ALMAPAY_CARD_MODE=stripe
 
-ALMAPAY_DATA_ROOT=/var/lib/almapay
 ALMAPAY_ACME_EMAIL=operator@example.com
 ALMAPAY_ACME_MODE=http-01
 
@@ -136,16 +137,18 @@ ALMAPAY_INCLUDE_CHAIN_DATA_IN_BACKUP=false
 
 At minimum, validate these values:
 
-- `ALMAPAY_NETWORK`: `mainnet`, `testnet`, or `regtest`.
+- `ALMAPAY_NETWORK`: must be `mainnet` in the initial supported deployment profile. Regtest may be injected only by test harnesses and must never produce a production-ready deployment.
 - `ALMAPAY_BITCOIN_MODE`: initially `local-pruned`; other modes require separately tested profiles.
-- `ALMAPAY_MONERO_MODE`: `disabled`, `local-pruned`, or explicitly tested `local-full`.
+- `ALMAPAY_MONERO_MODE`: `disabled` or `local-pruned`. `local-full` requires a separately tested future profile.
 - `ALMAPAY_LIGHTNING_MODE`: `disabled` or `boltz-nodeless`.
 - `ALMAPAY_CARD_MODE`: `disabled` or `stripe`.
-- `ALMAPAY_LISTEN`: must be a loopback address and unprivileged port.
+- `ALMAPAY_LISTEN`: must equal `127.0.0.1:8080` in the initial profile.
 - Domain and listen values: syntactically valid and mutually consistent.
 - Retention: a positive integer when backups are enabled.
 
 Unknown modes or contradictory settings must fail closed.
+
+The initial data root is fixed at `/var/lib/almapay`. It is the `almapay` account home, Compose project root, and rootless storage home. Relocating it is a future profile because path changes affect user-systemd units, SELinux labels, rootless storage, backup, and restore.
 
 Use a separate `secrets.env`, excluded from Git and created with mode `0600`, for provider tokens and credentials. Scripts must disable shell tracing before reading secrets. Secret values must be passed through protected environment files or standard input where supported, not command-line arguments.
 
@@ -165,8 +168,6 @@ config/
   secrets.env.example
   profiles/
     mainnet.env.example
-    testnet.env.example
-    regtest.env.example
 bin/
   almapay
 lib/
@@ -239,6 +240,7 @@ General command requirements:
 - Errors identify the failed invariant and remediation.
 - Diagnostics redact secrets.
 - Commands support noninteractive testing without weakening production confirmation gates.
+- `verify --production` emits a non-secret readiness report bound to the current configuration and lockfile hashes. It does not enable payment methods; a human operator records the final per-method approval after completing custody and real-payment checks.
 
 `almapay backup` and `almapay restore` are application-domain commands and run as `almapay`. They do not claim to provide a complete bare-host backup. Root-owned host recovery state is handled separately through ordinary host administration tooling.
 
@@ -249,7 +251,7 @@ General command requirements:
 - `/etc/os-release` identifies AlmaLinux with major version at least 10.
 - The current release is in the project's tested support matrix.
 - Future releases pass capability checks; version comparison alone is insufficient.
-- The architecture supports the installed distribution. Normal AlmaLinux 10 x86 packages target x86-64-v3; the alternate x86-64-v2 distribution requires special consideration for third-party packages.
+- The host reports `x86_64`, glibc reports `x86-64-v3 (supported, searched)`, and all locked images provide the selected linux/amd64 platform.
 - cgroup v2 is active.
 - SELinux is present and enforcing for production readiness.
 - Rootless user namespaces work.
@@ -260,7 +262,8 @@ General command requirements:
 - A supported Compose provider is installed.
 - The configured provider is exactly the expected `podman-compose` executable.
 - Rootless overlay storage works on the selected filesystem.
-- The host has adequate CPU, RAM, swap policy, disk, and inodes.
+- XFS used for `/var/lib/almapay` has `ftype=1`. If a swapfile is selected on a reflink-enabled XFS filesystem, bootstrap must use and verify a reviewed non-copy-on-write procedure rather than a naive sparse or reflinked file.
+- The first intended target host has adequate CPU, RAM, explicit swap policy, disk, disk performance, and inodes.
 - DNS, time synchronization, firewall state, and required outbound connectivity are suitable.
 - Ports 80 and 443 are available to Caddy and port 8080 is not publicly bound.
 
@@ -273,7 +276,7 @@ Privileged host administration is limited to bootstrap and host-level configurat
 - Allocate or validate subordinate UID/GID ranges.
 - Enable linger for `almapay`.
 - Install and configure Caddy when requested.
-- Apply a reviewed firewall change that preserves the actual operator SSH port.
+- Install and enable firewalld for the initial profile when it is absent or inactive, record the existing SSH listener before changing policy, preserve that exact SSH port, allow HTTP and HTTPS to Caddy, and keep port 8080 and all internal ports closed publicly.
 
 Privileged host operations must never run Podman as root, inspect or copy live rootless Podman storage as a substitute for application backup, disable SELinux, lower the unprivileged-port threshold, expose port 8080, overwrite unrelated firewall policy, or alter SSH configuration without explicit operator approval.
 
@@ -324,22 +327,28 @@ platform:
   distribution: almalinux
   minimum_major: 10
   tested_release: "10.2"
+  architecture: x86_64
+  cpu_level: x86-64-v3
+  virtualization: kvm
 
 runtime:
-  podman: "5.8.0"
+  podman_nevra: "<tested-exact-nevra>"
   compose_provider: podman-compose
-  compose_provider_version: "<tested-version>"
+  compose_provider_nevra: "<tested-exact-nevra>"
+  package_repositories:
+    - id: "<repository-id>"
+      signing_key_fingerprint: "<verified-fingerprint>"
 
 btcpayserver_docker:
   commit: "<verified-commit-sha>"
   generator_image: "btcpayserver/docker-compose-generator@sha256:<digest>"
 
 images:
-  btcpayserver: "btcpayserver/btcpayserver:2.4.0@sha256:<digest>"
-  bitcoin_core: "btcpayserver/bitcoin:31.0@sha256:<digest>"
-  nbxplorer: "nicolasdorier/nbxplorer:2.6.8@sha256:<digest>"
-  postgres: "<repository>:<tag>@sha256:<digest>"
-  monero: "<repository>:<tag>@sha256:<digest>"
+  btcpayserver: "btcpayserver/btcpayserver:2.4.0@sha256:<manifest-list-and-linux-amd64-digests>"
+  bitcoin_core: "btcpayserver/bitcoin:31.0@sha256:<manifest-list-and-linux-amd64-digests>"
+  nbxplorer: "nicolasdorier/nbxplorer:2.6.8@sha256:<manifest-list-and-linux-amd64-digests>"
+  postgres: "<repository>:<tag>@sha256:<manifest-list-and-linux-amd64-digests>"
+  monero: "<repository>:<tag>@sha256:<manifest-list-and-linux-amd64-digests>"
 
 minimum_versions:
   btcpayserver: "2.4.0"
@@ -351,7 +360,7 @@ plugins:
   stripe: "<compatible-version-and-source>"
 ```
 
-The exact initial pins must be researched and verified when the AlmaPay repository is implemented. Tags provide readability; digests provide immutability. Production commands must never silently consume `latest`, a moving branch, or an unverified plugin manifest.
+The exact initial pins must be researched and verified when the AlmaPay repository is implemented. Tags provide readability; digests provide immutability. Multi-architecture tags require both the manifest-list digest and the selected linux/amd64 platform digest. The generator image must be proven to correspond to the pinned source commit, or be reproducibly built from that commit. Production commands must never silently consume `latest`, a moving branch, an unavailable package version, or an unverified plugin manifest.
 
 ## Compose generation
 
@@ -438,13 +447,13 @@ Verification must confirm:
 
 ## Monero
 
-Monero is optional. The current upstream fragment uses `--prune-blockchain`, so the default must be documented as `local-pruned`, not full.
+The first implementation must ship the mainnet Monero profile. The current upstream fragment uses `--prune-blockchain`, so the supported mode is `local-pruned`, not full. `NBITCOIN_NETWORK` does not select the Monero network; the stock fragment is mainnet-specific. AlmaPay must not claim Monero testnet or stagenet support without a separate fragment and test profile.
 
 Requirements:
 
 - `disabled` omits Monero services and plugin setup.
 - `local-pruned` uses the reviewed upstream pruning behavior.
-- `local-full` requires a separately tested override that removes pruning.
+- `local-full`, testnet, and stagenet require separately tested future overrides.
 - Daemon and wallet RPC remain internal.
 - Unauthenticated RPC is never public.
 - Spend keys are never requested, uploaded, stored, logged, or backed up by AlmaPay.
@@ -474,6 +483,8 @@ Supported optional plugins are:
 - Monero, when XMR is selected.
 - Boltz in nodeless mode for Lightning.
 - Stripe Payments for card methods.
+
+All three profiles are first-pass deliverables even though operators may leave any method disabled. Shipping a profile means pinning and testing its exact release, configuration, restart behavior, custody material, backup and restore, diagnostics, and representative payment flow. Presence in the repository never authorizes automatic enablement.
 
 Before installation:
 
@@ -519,6 +530,7 @@ Requirements:
 - Caddy configuration is validated before reload.
 - Firewall changes preserve the real SSH port and do not risk lockout.
 - Port 8080 and all internal service ports remain unavailable externally.
+- The Arkfile profile leaves Caddy access logging disabled and verifies that neither Caddy, BTCPay, journald, nor AlmaPay diagnostics retain client IP addresses. Because Caddy adds forwarding headers by default, implementation must test the exact pinned Caddy and BTCPay behavior and apply a reviewed header policy if necessary; assumed privacy is not sufficient.
 
 Consumer applications must use the public BTCPay origin for customer-facing checkout links. The loopback origin `127.0.0.1:8080` is an internal Caddy upstream and must never appear in checkout links or integrator configuration. Arkfile additionally requires the public origin for its Content Security Policy.
 
@@ -571,7 +583,7 @@ Request semantics:
 - Currency is `USD`.
 - Amount has two decimal places.
 - `metadata.invoice_id` contains Arkfile's opaque local invoice ID and no PII.
-- `checkout.speedPolicy` is `HighSpeed`.
+- `checkout.speedPolicy` is `LowMediumSpeed`, requiring two confirmations for on-chain settlement. `HighSpeed` is prohibited for Arkfile production top-ups.
 - `checkout.expirationMinutes` is `60`.
 - Redirect URL points back to Arkfile.
 
@@ -597,9 +609,20 @@ The signature header is:
 BTCPay-Sig: sha256=<hex HMAC-SHA256>
 ```
 
-Arkfile accepts settlement event types `InvoiceSettled` and `InvoiceCompleted`. It matches `metadata.invoice_id`, with provider `invoiceId` as fallback. Arkfile performs the final local invoice transition and credit-ledger insertion transactionally. Replayed deliveries must not add credit again.
+Arkfile treats the Greenfield `InvoiceSettled` event as the authoritative settlement event. It must not depend on the legacy BitPay-style `InvoiceCompleted` event. It matches `metadata.invoice_id`, with provider `invoiceId` as fallback, and validates that both identifiers bind to the same local record when both are present. Arkfile performs the final local invoice transition and credit-ledger insertion transactionally. Replayed deliveries must not add credit again.
 
 The Arkfile runtime key should have only invoice creation and invoice-read permissions. Provisioning operations that manage webhooks must use a separate operator or short-lived key.
+
+Before the reference integration may pass production acceptance, Arkfile itself must:
+
+- Use the canonical `100,000,000` microcents-per-USD conversion for PAYG limits, invoice records, and ledger entries.
+- Reject top-up precision beyond two decimal places and construct the BTCPay amount without floating-point rounding or truncation.
+- Require a normalized public HTTPS BTCPay origin in production and reject loopback, credential-bearing, query-bearing, fragment-bearing, or unexpected-path URLs.
+- Persist a recoverable local invoice association around remote invoice creation so a database failure or early webhook cannot create an unrecoverable paid invoice.
+- Bound webhook request bodies, verify the exact raw-body signature, validate the configured store, and reject conflicting local and provider invoice identifiers.
+- Reconcile remotely settled pending invoices rather than only repairing local invoices already marked paid.
+- Keep usernames, balances, checkout URLs, credentials, and raw webhook payloads out of operational logs.
+- Prove concurrent and replayed webhooks, polling, and reconciliation can insert at most one payment credit.
 
 The integration runbook must produce:
 
@@ -677,14 +700,15 @@ Application backup must use logical database exports and service-aware or Podman
 
 Chain data is reconstructible and may be excluded by default. Inclusion must be configurable and capacity-checked.
 
-Backups must support an encrypted off-host destination. Local-only backup is not sufficient for production readiness. Backup logs must not disclose secret material.
+Backups must produce a verified encrypted artifact suitable for an off-host destination. Local-only retention is not sufficient for production readiness. The initial documented off-host procedure may be an interactive upload through `arkfile-client` to a separate Arkfile host and storage failure domain, but Arkfile must not be the only retained copy. AlmaPay must not automate Arkfile credentials until the client provides reviewed noninteractive secret input that avoids process arguments, environment variables, logs, and shell tracing. Backup logs must not disclose secret material.
 
-A backup succeeds only after:
+`almapay backup` succeeds locally only after:
 
 - The database dump passes an integrity check.
 - All manifest entries are checksummed.
 - The encrypted archive can be opened with the configured recovery method.
-- The destination confirms durable storage.
+
+Production backup readiness additionally requires an operator-confirmed durable off-host copy, a recorded artifact checksum and destination reference, independent custody of AlmaPay decryption material and Arkfile recovery material, and a successful clean-host restore exercise. A manual transfer is an explicit operator gate, not a claim of automated off-host delivery.
 
 ### Root-owned host recovery backup
 
@@ -795,7 +819,7 @@ Repository tests must include:
 - Application and host manifest-pairing tests.
 - Paired application and host restore tests.
 - AlmaLinux 10.2 VM integration testing.
-- Testnet or regtest BTCPay integration testing.
+- Mock-based integration tests and a BTC-only regtest fixture. Regtest is not a supported deployment profile and does not validate mainnet Monero, Boltz, or Stripe.
 - Generic consumer integration tests using an application-neutral fixture.
 - Arkfile reference-integration tests kept outside core AlmaPay runtime modules.
 
@@ -826,10 +850,10 @@ Before Arkfile production use:
 6. Confirm Arkfile inserts exactly one positive credit transaction.
 7. Replay the webhook and confirm neither balance nor ledger changes again.
 8. Exercise invoice polling or administrative synchronization.
-9. Suppress one webhook and confirm operational synchronization repairs the local state.
+9. Suppress one webhook and confirm operational synchronization queries the remotely settled pending invoice and repairs the local state.
 10. Confirm BTCPay metadata contains only the opaque local invoice ID.
 
-A separate Bitcoin test must create and settle an on-chain invoice using the running Bitcoin Core 30+ node. Plugin-enabled profiles must also exercise representative Boltz, Stripe test-mode, and Monero payments before those methods are enabled in production.
+A separate Bitcoin fixture must create and settle an on-chain invoice using the running Bitcoin Core 30+ node. Before production enablement, a human operator must then perform low-value mainnet payments with their own funds for BTC, XMR, and Boltz, plus a Stripe test-mode payment followed by an explicitly authorized low-value live-mode payment. Automated agents must prepare and verify the procedure but must never initiate, custody, or refund real funds.
 
 ## Production readiness
 
@@ -848,6 +872,7 @@ Mainnet acceptance requires operator sign-off that:
 - Separate, store-scoped production keys and webhook secrets exist for every consumer and environment.
 - Plugin versions are pinned and tested.
 - Test payments and webhook replay tests pass.
+- The per-method readiness report is bound to the deployed configuration and lockfile, and the operator has explicitly approved each enabled mainnet method after its own custody, backup, restore, and real-payment checks.
 - Monitoring covers service health, certificate expiry, disk, inodes, synchronization, failed backups, and failed webhook delivery.
 - Remaining custody and provider decisions are explicitly documented.
 
