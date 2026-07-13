@@ -1,0 +1,78 @@
+# Fixture: upstream-like generated Compose BEFORE AlmaPay overlays.
+# Used with ALMAPAY_USE_FIXTURE_COMPOSE=1. Contains intentional upstream trust
+# and tag references that AlmaPay must rewrite before security validation.
+
+services:
+  btcpayserver:
+    restart: unless-stopped
+    image: ${BTCPAY_IMAGE:-btcpayserver/btcpayserver:2.4.0}
+    ports:
+      - "127.0.0.1:8080:49392"
+    environment:
+      BTCPAY_POSTGRES: "User ID=btcpay;Host=postgres;Port=5432;Database=btcpaydb"
+      BTCPAY_CHAINS: "btc;xmr"
+      BTCPAY_BTCEXPLORERURL: http://nbxplorer:32838/
+      BTCPAY_SSHCONNECTION: root@host.docker.internal
+      BTCPAY_SSHKEYFILE: ${BTCPAY_SSHKEYFILE}
+    expose:
+      - "49392"
+    volumes:
+      - "btcpay_datadir:/datadir"
+      - "$<BTCPAY_HOST_SSHAUTHORIZEDKEYS>?:${BTCPAY_SSHAUTHORIZEDKEYS}"
+  postgres:
+    restart: unless-stopped
+    image: btcpayserver/postgres:18.4
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    expose:
+      - "5432"
+    volumes:
+      - "postgres_datadir:/var/lib/postgresql"
+  nbxplorer:
+    restart: unless-stopped
+    image: nicolasdorier/nbxplorer:2.6.8
+    environment:
+      NBXPLORER_CHAINS: "btc"
+      NBXPLORER_BTCRPCURL: http://bitcoind:43782/
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:39388
+      NBXPLORER_POSTGRES: "User ID=btcpay;Host=postgres;Port=5432;Database=btcpaydb"
+    expose:
+      - "32838"
+  bitcoind:
+    restart: unless-stopped
+    container_name: btcpayserver_bitcoind
+    image: btcpayserver/bitcoin:31.0
+    environment:
+      BITCOIN_NETWORK: mainnet
+      CREATE_WALLET: "false"
+      BITCOIN_WALLETDIR: "/walletdata"
+      BITCOIN_EXTRA_ARGS: |
+        rpcport=43782
+        rpcbind=0.0.0.0:43782
+        rpcallowip=0.0.0.0/0
+        port=39388
+        whitelist=0.0.0.0/0
+        maxmempool=500
+        mempoolfullrbf=1
+        prune=50000
+    expose:
+      - "43782"
+      - "39388"
+    volumes:
+      - "bitcoin_datadir:/data"
+      - "bitcoin_wallet_datadir:/walletdata"
+  monerod:
+    restart: unless-stopped
+    image: btcpayserver/monero:0.18.4.3
+    command: ["--prune-blockchain"]
+    expose:
+      - "18081"
+    volumes:
+      - "monero_datadir:/data"
+
+volumes:
+  btcpay_datadir:
+  postgres_datadir:
+  bitcoin_datadir:
+  bitcoin_wallet_datadir:
+  monero_datadir:

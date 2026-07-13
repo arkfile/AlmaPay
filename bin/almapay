@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# AlmaPay CLI — deployment and operations toolkit for BTCPay on AlmaLinux.
+set -euo pipefail
+
+ALMAPAY_BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/common.sh
+source "${ALMAPAY_BIN_DIR}/../lib/common.sh"
+# shellcheck source=../lib/config.sh
+source "${ALMAPAY_LIB_DIR}/config.sh"
+# shellcheck source=../lib/podman.sh
+source "${ALMAPAY_LIB_DIR}/podman.sh"
+# shellcheck source=../lib/upstream.sh
+source "${ALMAPAY_LIB_DIR}/upstream.sh"
+# shellcheck source=../lib/compose.sh
+source "${ALMAPAY_LIB_DIR}/compose.sh"
+# shellcheck source=../lib/host.sh
+source "${ALMAPAY_LIB_DIR}/host.sh"
+# shellcheck source=../lib/caddy.sh
+source "${ALMAPAY_LIB_DIR}/caddy.sh"
+# shellcheck source=../lib/systemd.sh
+source "${ALMAPAY_LIB_DIR}/systemd.sh"
+# shellcheck source=../lib/btcpay.sh
+source "${ALMAPAY_LIB_DIR}/btcpay.sh"
+# shellcheck source=../lib/verify.sh
+source "${ALMAPAY_LIB_DIR}/verify.sh"
+# shellcheck source=../lib/backup.sh
+source "${ALMAPAY_LIB_DIR}/backup.sh"
+# shellcheck source=../lib/restore.sh
+source "${ALMAPAY_LIB_DIR}/restore.sh"
+
+almapay_usage() {
+  cat <<'EOF'
+Usage: almapay <command> [args]
+
+Commands:
+  doctor              Read-only host prerequisite inspection
+  bootstrap-host      Privileged idempotent host setup (root)
+  install             Validate config, generate compose, install user unit
+  generate            Generate/inspect Compose (optional --build-generator)
+  research-generator  Print candidate generator lock evidence; never edits lock
+  start               Start stack via user systemd / podman compose
+  stop                Stop stack
+  restart             Restart stack
+  status              Show service and container status
+  logs [service]      Show container logs
+  verify [--production]
+  backup              Disabled until verified backup is implemented
+  restore             Disabled until verified restore is implemented
+  update              Disabled until backup/restore is verified
+  render-caddy        Render AlmaPay Caddy source template
+
+Runtime commands refuse UID 0. Never invoke Docker or sudo podman.
+EOF
+}
+
+cmd_install() {
+  almapay_require_service_user
+  almapay_load_config
+  almapay_validate_config
+  almapay_require_release_lock
+  almapay_require_secrets
+  almapay_generate_compose
+  almapay_pull_locked_images
+  almapay_install_systemd_unit
+  almapay_systemd_reload_enable
+  almapay_render_caddy
+  almapay_info "install complete; review Compose and Caddy source before starting"
+}
+
+cmd_generate() {
+  local build=0
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --build-generator) build=1 ;;
+      *) almapay_die "unknown generate argument: ${arg}" ;;
+    esac
+  done
+  almapay_require_service_user
+  almapay_load_config
+  almapay_validate_config
+  almapay_require_release_lock
+  almapay_require_secrets
+  if [[ "${build}" -eq 1 ]]; then
+    almapay_build_generator
+  fi
+  almapay_generate_compose
+}
+
+cmd_research_generator() {
+  almapay_require_service_user
+  almapay_research_generator
+}
+
+cmd_start() {
+  almapay_require_service_user
+  almapay_load_config
+  almapay_validate_config
+  almapay_require_release_lock
+  almapay_require_secrets
+  [[ -f "$(almapay_compose_file)" ]] || almapay_die "compose missing; run almapay install|generate first"
+  [[ -f "$(almapay_systemd_unit_path)" ]] ||
+    almapay_die "user systemd unit missing; run almapay install"
+  almapay_compose_security_validate "$(almapay_compose_file)"
+  almapay_systemd_start
+}
+
+cmd_stop() {
+  almapay_require_service_user
+  almapay_systemd_stop
+}
+
+cmd_restart() {
+  cmd_stop
+  cmd_start
+}
+
+cmd_status() {
+  almapay_require_service_user
+  almapay_systemd_status || true
+  if command -v podman >/dev/null 2>&1; then
+    almapay_podman ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
+  fi
+}
+
+cmd_logs() {
+  almapay_require_service_user
+  almapay_load_config
+  almapay_validate_config
+  almapay_require_release_lock
+  almapay_require_secrets
+  local svc="${1:-}"
+  if [[ -n "${svc}" ]]; then
+    almapay_podman_compose -f "$(almapay_compose_file)" --env-file "$(almapay_env_file)" logs --tail=200 "${svc}" |
+      while IFS= read -r line; do almapay_redact "${line}"; printf '\n'; done
+  else
+    almapay_podman_compose -f "$(almapay_compose_file)" --env-file "$(almapay_env_file)" logs --tail=200 |
+      while IFS= read -r line; do almapay_redact "${line}"; printf '\n'; done
+  fi
+}
+
+cmd_update() {
+  almapay_require_service_user
+  almapay_die "update is disabled until verified application backup/restore is implemented and tested"
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  case "${cmd}" in
+    doctor) almapay_doctor_report "$@" ;;
+    bootstrap-host) almapay_bootstrap_host "$@" ;;
+    install) cmd_install "$@" ;;
+    generate) cmd_generate "$@" ;;
+    research-generator) cmd_research_generator "$@" ;;
+    start) cmd_start "$@" ;;
+    stop) cmd_stop "$@" ;;
+    restart) cmd_restart "$@" ;;
+    status) cmd_status "$@" ;;
+    logs) cmd_logs "$@" ;;
+    verify)
+      almapay_require_service_user
+      almapay_verify "$@"
+      ;;
+    backup)
+      almapay_refuse_root
+      almapay_backup "$@"
+      ;;
+    restore) almapay_restore "$@" ;;
+    update) cmd_update "$@" ;;
+    render-caddy)
+      almapay_require_service_user
+      almapay_load_config
+      almapay_validate_config
+      almapay_render_caddy
+      ;;
+    -h|--help|help|"") almapay_usage ;;
+    *)
+      almapay_error "unknown command: ${cmd}"
+      almapay_usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

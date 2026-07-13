@@ -1,0 +1,16 @@
+# Ignore secrets, local env, and generated runtime state
+secrets.env
+almapay.env
+.env
+*.pem
+*.key
+/var/
+.venv/
+__pycache__/
+*.pyc
+/tmp/
+.DS_Store
+
+# Local test artifacts
+/tests/.cache/
+*.tar

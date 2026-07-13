@@ -4,9 +4,9 @@
 
 ## Project overview
 
-AlmaPay is an application-agnostic deployment and operations toolkit for self-hosted BTCPay Server on AlmaLinux 10 and later.
+AlmaPay is an application-agnostic deployment and operations toolkit under development for self-hosted BTCPay Server on AlmaLinux 10 and later.
 
-It automates and documents:
+Its contract covers:
 
 - Rootless Podman host preparation.
 - BTCPay Compose generation.
@@ -25,23 +25,24 @@ AlmaPay may serve multiple consumer applications through separate BTCPay stores,
 
 Before making changes, read:
 
-1. `docs/alma-pay-spec.md`, the current implementation contract.
-2. `docs/alma-pay-server.md`, the companion planning runbook.
-3. `README.md`, the repository status and supported-scope summary.
+1. `docs/alma-pay-spec.md`: normative implementation contract; requirements are not claims that implementation is complete.
+2. `README.md`: concise current status and persona routing.
+3. `docs/design.md`: active architecture, trust boundaries, and security-invariant explanation.
+4. `docs/operator-guide.md`: active command and operational guidance.
+5. `docs/production-readiness.md`: the only go-live checklist.
+6. `docs/integrator-guide.md`: generic consumer integration guidance.
+7. `docs/reference-integrations/arkfile.md`: Arkfile-only reference material.
 
-The following files are planned implementation deliverables and may not exist yet:
+Material under `docs/archive/` is historical only. It must not be linked as active installation guidance. Current upstream behavior and exact pins must be researched and tested before runnable deployment guidance is published.
 
-- `docs/architecture.md`
-- `docs/security.md`
-- `docs/installation.md`
-- `docs/integrator-guide.md`
-- `docs/reference-integrations/arkfile.md`
-- `docs/operations.md`
-- `docs/backup-and-restore.md`
-- `docs/production-readiness.md`
-- `upstream.lock`
+## Current implementation status
 
-Do not treat planning commands containing placeholders as production-ready instructions. Current upstream behavior and exact pins must be researched and tested before runnable deployment guidance is published.
+- `upstream.lock` is `candidate` and contains unresolved `PENDING` and `REPLACE` values. Bootstrap, install, generation, start, and verification require a `validated` or `production` lock and intentionally block today.
+- Configuration and secrets files are strict `KEY=VALUE` data; they are never sourced. `secrets.env` must be owned by `almapay` with mode `0600`.
+- Only `bootstrap-host` runs as root. Runtime commands require the `almapay` account.
+- Backup, restore, and update deliberately fail closed. `verify --production` deliberately blocks on unfinished production checks.
+- Boltz and Stripe are selectable but do not have stable installation or runtime verification. Monero services can be generated, but plugin, custody, and readiness gates are not production-proven.
+- Local fixtures pass; no AlmaLinux VM integration has run. Agents have no production VPS access.
 
 ## Product boundary
 
@@ -59,18 +60,18 @@ Consumer applications remain responsible for their users, business records, invo
 Do not add Arkfile-specific business logic to AlmaPay core modules. Arkfile-specific documentation and test fixtures must remain isolated under clearly named reference-integration locations.
 Do not modify Arkfile or another consumer application from this repository.
 
-## Current supported scope
+## Initial target scope
 
-The initial supported deployment profile is:
+The intended initial deployment profile is below. It is not currently a production-supported profile:
 
 - Mainnet on AlmaLinux 10.0 or later, with AlmaLinux 10.2 on x86_64 and x86-64-v3 as the first tested platform.
 - Host-installed Caddy as the only public HTTP/TLS entry point.
 - A local pruned Bitcoin node.
-- A shipped local-pruned Monero profile.
-- Shipped, independently gated Boltz nodeless Lightning and Stripe Payments profiles.
+- A local-pruned Monero service profile, still gated on plugin, custody, restore, and payment proof.
+- Candidate Boltz nodeless Lightning and Stripe Payments selections, still lacking stable installation and runtime verification.
 - A single-host payment stack.
 
-Regtest and mocks are test fixtures, not supported deployment profiles. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other modes are future profiles. Do not describe them as supported until they have explicit implementation, security validation, and integration tests.
+Regtest and mocks are test fixtures, not supported deployment profiles. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other modes are future profiles. Do not describe any profile as supported until it has explicit implementation, security validation, and integration tests.
 
 ## Required platform assumptions
 
@@ -87,6 +88,8 @@ Exact production dependencies must be pinned in `upstream.lock`. Minimum-version
 Do not silently change dependency pins. Research upstream compatibility, explain the change, regenerate deployment artifacts, inspect the resulting diff, and update relevant tests and documentation.
 
 ## Security invariants
+
+The concise canonical invariant list and rationale are in `docs/design.md`. The mandatory rules below remain binding for every change.
 
 Preserve these invariants in every change:
 

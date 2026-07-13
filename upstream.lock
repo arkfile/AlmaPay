@@ -1,0 +1,122 @@
+# AlmaPay upstream lockfile — candidate pins observed/corroborated 2026-07-13.
+# status: candidate | validated | production
+# Copy into a release only after revalidation, clean-VM/fixture tests, and operator review.
+# Digests and NEVRAs below are research candidates, not automatic production approval.
+
+status: candidate
+researched_on: "2026-07-13"
+notes: >
+  Revalidate availability and compatibility before production. Build the compose
+  generator locally from the pinned btcpayserver-docker commit; do not use the
+  floating docker-compose-generator:latest image. Package NEVRAs require immutable
+  source URLs and checksums before production promotion.
+
+platform:
+  distribution: almalinux
+  minimum_major: 10
+  tested_release: "10.2"
+  architecture: x86_64
+  cpu_level: x86-64-v3
+  virtualization: kvm
+
+runtime:
+  podman_nevra: "podman-5.x.x-REPLACE.el10"  # replace after host dnf inquiry
+  compose_provider: podman-compose
+  compose_provider_path: /usr/bin/podman-compose
+  compose_provider_version: "1.5.0"
+  compose_provider_nevra: "podman-compose-1.5.0-1.el10_1"
+  caddy_nevra: "caddy-2.10.2-9.el10_2"
+  host_packages:
+    - "podman-REPLACE-WITH-EXACT-NEVRA"
+    - "podman-compose-1.5.0-1.el10_1"
+    - "caddy-2.10.2-9.el10_2"
+    - "python3-REPLACE-WITH-EXACT-NEVRA"
+    - "python3-pyyaml-REPLACE-WITH-EXACT-NEVRA"
+    - "git-REPLACE-WITH-EXACT-NEVRA"
+    - "curl-REPLACE-WITH-EXACT-NEVRA"
+    - "jq-REPLACE-WITH-EXACT-NEVRA"
+    - "shadow-utils-REPLACE-WITH-EXACT-NEVRA"
+    - "firewalld-REPLACE-WITH-EXACT-NEVRA"
+    - "container-selinux-REPLACE-WITH-EXACT-NEVRA"
+  package_repositories:
+    - id: "pending-operator-confirmation"
+      signing_key_fingerprint: "PENDING"
+      repomd_sha256: "PENDING"
+  package_artifacts:
+    - nevra: "podman-compose-1.5.0-1.el10_1"
+      source_url: "PENDING-immutable-rpm-url"
+      sha256: "PENDING"
+
+btcpayserver_docker:
+  commit: "a25cd38c1e068bc3412b57a359bc84f063230db1"
+  repository: "https://github.com/btcpayserver/btcpayserver-docker"
+  generator:
+    image: "localhost/almapay/docker-compose-generator:pinned"
+    # Record digest after first successful rootless build on the target host.
+    image_digest: "sha256:PENDING_LOCAL_BUILD"
+    dockerfile_sha256: "PENDING_AFTER_CHECKOUT"
+    builder_base_image: "mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:PENDING"
+    runtime_base_image: "mcr.microsoft.com/dotnet/runtime:10.0.5-noble@sha256:PENDING"
+
+images:
+  btcpayserver:
+    reference: "btcpayserver/btcpayserver:2.4.0"
+    manifest_digest: "sha256:8861fc45db4992889950771075a71a82e78e5ca382400a23d7989bd1ef618593"
+    linux_amd64_digest: "sha256:d9ae1b5a4bb921636ffae88b2a6f3cf93376f532afe6fb9305d6e3a76ec71edf"
+  bitcoin_core:
+    reference: "btcpayserver/bitcoin:31.0"
+    manifest_digest: "sha256:a753d6fe3d8051ff03015ec77f068d9698b85b9abe8864a783ed22a572c9dcce"
+    linux_amd64_digest: "sha256:cc070dffde3073154b508e95ae64b39f433b41874dd8f2cd49c0d1b4d16a15ff"
+  nbxplorer:
+    reference: "nicolasdorier/nbxplorer:2.6.8"
+    manifest_digest: "sha256:1ae5e23a330659baa9ea8731b93ae0b675aaf9e7add17283c910aa13e8cbaf60"
+    linux_amd64_digest: "sha256:a96d59772471628a00d2ee779c69414591e04d202923a008a405a02dd7893569"
+  postgres:
+    reference: "btcpayserver/postgres:18.4"
+    manifest_digest: "sha256:ee11b4d9b3473a93cf608b37c2090749e55a5354f911b8d18772f962fcfb0bb5"
+    linux_amd64_digest: "sha256:fea63bcc6230c468b4ab8d8f89b853918ac0eb7844bd966323639c4602314d6c"
+  monero:
+    reference: "btcpayserver/monero:0.18.4.3"
+    manifest_digest: "sha256:210af42cff4311e7fc6040116363ea3dc0d0d3d64c938969679a5a00fc752936"
+    linux_amd64_digest: "sha256:3f8925d3f8fb81c37b2537a3099e40c29653b80b88a5ab45f8c6dfa2f9997740"
+
+minimum_versions:
+  btcpayserver: "2.4.0"
+  bitcoin_core: "30.0"
+  bitcoin_core_numeric: 300000
+
+plugins:
+  monero:
+    version: "1.3.0.0"
+    source: "https://github.com/btcpay-monero/btcpayserver-monero-plugin"
+    commit: "f71b1a5a2d8bfedd901f84b7805d13021b6ceedd"
+    builder_build_id: 11
+    builder_build_hash: "5dff2bd1adc2f0eeb11857e289cdf335f53af3fbf7701ec50658ce2673b660c0"
+    minimum_btcpayserver: "2.3.7"
+    provenance: "unsigned-builder-artifact"
+  boltz:
+    version: "2.4.2"
+    source: "https://github.com/BoltzExchange/boltz-btcpay-plugin"
+    commit: "fce1dfb29830f9dcbc9d51a909d04b294287179d"
+    artifact_sha256: "05a0e8e91ab0a398a02cccb4f1415a28648e1280825b9a868539e1efb3974f84"
+    signing_fingerprint: "8918FFBFFB49E93EF256D930542A7F22A3BD9CB0"
+    minimum_btcpayserver: "2.3.7"
+    provenance: "signed-github-release"
+  stripe:
+    version: "1.0.12.0"
+    source: "https://github.com/Kukks/BTCPayServerPlugins"
+    commit: "969a295a5f410e08f49168ccee2f97bd068d6eb5"
+    builder_build_id: 12
+    builder_build_hash: "233aa5c0d97cbc316e566a2172a7715d9ce94761d33d1e2e655a801dd124d3c7"
+    minimum_btcpayserver: "2.3.7"
+    provenance: "unsigned-builder-artifact"
+
+generator_profile:
+  BTCPAYGEN_CRYPTO1: btc
+  BTCPAYGEN_CRYPTO2: xmr
+  BTCPAYGEN_REVERSEPROXY: none
+  BTCPAYGEN_LIGHTNING: none
+  BTCPAYGEN_EXCLUDE_FRAGMENTS: "bitcoin;opt-add-tor"
+  BTCPAYGEN_ADDITIONAL_FRAGMENTS: "bitcoincore;opt-save-storage-s;opt-mempoolfullrbf"
+  NOREVERSEPROXY_HTTP_PORT: "127.0.0.1:8080"
+  CREATE_WALLET: "false"

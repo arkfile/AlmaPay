@@ -1,0 +1,79 @@
+# Fixture: AlmaPay-rendered Compose after overlays (digests + SCRAM).
+# Passes almapay_compose_security_validate.
+
+services:
+  btcpayserver:
+    restart: unless-stopped
+    image: btcpayserver/btcpayserver@sha256:d9ae1b5a4bb921636ffae88b2a6f3cf93376f532afe6fb9305d6e3a76ec71edf
+    ports:
+      - "127.0.0.1:8080:49392"
+    environment:
+      BTCPAY_POSTGRES: "User ID=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required};Host=postgres;Port=5432;Application Name=btcpayserver;Database=btcpayserver${NBITCOIN_NETWORK:-regtest}"
+      BTCPAY_EXPLORERPOSTGRES: "User ID=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required};Host=postgres;Port=5432;Application Name=btcpayserver;MaxPoolSize=80;Database=nbxplorer${NBITCOIN_NETWORK:-regtest}"
+      BTCPAY_CHAINS: "btc;xmr"
+      BTCPAY_BTCEXPLORERURL: http://nbxplorer:32838/
+    expose:
+      - "49392"
+  postgres:
+    restart: unless-stopped
+    image: btcpayserver/postgres@sha256:fea63bcc6230c468b4ab8d8f89b853918ac0eb7844bd966323639c4602314d6c
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    command:
+      - "postgres"
+      - "-c"
+      - "password_encryption=scram-sha-256"
+    expose:
+      - "5432"
+    volumes:
+      - "postgres_datadir:/var/lib/postgresql"
+  nbxplorer:
+    restart: unless-stopped
+    image: nicolasdorier/nbxplorer@sha256:a96d59772471628a00d2ee779c69414591e04d202923a008a405a02dd7893569
+    environment:
+      NBXPLORER_CHAINS: "btc"
+      NBXPLORER_BTCRPCURL: http://bitcoind:43782/
+      NBXPLORER_BTCNODEENDPOINT: bitcoind:39388
+      NBXPLORER_POSTGRES: "User ID=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required};Host=postgres;Port=5432;Application Name=nbxplorer;MaxPoolSize=20;Database=nbxplorer${NBITCOIN_NETWORK:-regtest}"
+    expose:
+      - "32838"
+  bitcoind:
+    restart: unless-stopped
+    container_name: btcpayserver_bitcoind
+    image: btcpayserver/bitcoin@sha256:cc070dffde3073154b508e95ae64b39f433b41874dd8f2cd49c0d1b4d16a15ff
+    environment:
+      BITCOIN_NETWORK: mainnet
+      CREATE_WALLET: "false"
+      BITCOIN_WALLETDIR: "/walletdata"
+      BITCOIN_EXTRA_ARGS: |
+        rpcport=43782
+        rpcbind=0.0.0.0:43782
+        rpcallowip=0.0.0.0/0
+        port=39388
+        whitelist=0.0.0.0/0
+        maxmempool=500
+        mempoolfullrbf=1
+        prune=50000
+    expose:
+      - "43782"
+      - "39388"
+    volumes:
+      - "bitcoin_datadir:/data"
+      - "bitcoin_wallet_datadir:/walletdata"
+  monerod:
+    restart: unless-stopped
+    image: btcpayserver/monero@sha256:3f8925d3f8fb81c37b2537a3099e40c29653b80b88a5ab45f8c6dfa2f9997740
+    command: ["--prune-blockchain"]
+    expose:
+      - "18081"
+    volumes:
+      - "monero_datadir:/data"
+
+volumes:
+  postgres_datadir:
+  bitcoin_datadir:
+  bitcoin_wallet_datadir:
+  monero_datadir:

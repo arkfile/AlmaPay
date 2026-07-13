@@ -10,7 +10,9 @@ The first production target is an already-provisioned VPS. Repository implementa
 
 The initial supported deployment profile is deliberately narrow: mainnet on one AlmaLinux 10+ x86-64-v3 host, host-installed Caddy, a local pruned Bitcoin node, and local pruned Monero. The first implementation must ship the reviewed Monero, Boltz nodeless Lightning, and Stripe Payments profiles, but every payment method remains disabled until its own production-readiness gate passes. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other deployment modes are future profiles. They must not be described as supported until they have explicit implementation, security validation, and integration tests.
 
-The companion operator runbook is [`alma-pay-server.md`](alma-pay-server.md).
+Active operator guidance is in [`operator-guide.md`](operator-guide.md). Architecture and security rationale are consolidated in [`design.md`](design.md), and the only go-live checklist is [`production-readiness.md`](production-readiness.md).
+
+Implementation status as of July 13, 2026: this contract is not yet satisfied. `upstream.lock` remains `candidate` and contains unresolved `PENDING`/`REPLACE` values, so bootstrap, install, generation, start, and verification intentionally require a future validated or production lock. Backup, restore, update, and production verification deliberately fail closed. Monero runtime services can be generated, but plugin/custody/readiness remain unproven; Boltz and Stripe selection and candidate pins exist, but stable installation and runtime verification do not. Local fixture tests pass, but no AlmaLinux VM integration has run. These status statements do not weaken any requirement below.
 
 ## Required baseline
 
@@ -28,7 +30,7 @@ The implementation must assume:
 - Mainnet as the only supported production network. Regtest and mocks are test fixtures, not deployment profiles.
 - A pruned local Bitcoin node.
 - A pruned local Monero node.
-- Shipped, independently gated profiles for Boltz nodeless Lightning and Stripe Payments.
+- Independently gated Boltz nodeless Lightning and Stripe Payments profiles as required release deliverables.
 - Greenfield API and signed HTTPS webhooks for application integration.
 
 Version floors are not permission to float dependencies. Every production release must pin exact commits, image digests, package versions, and plugin releases in `upstream.lock`.
@@ -188,20 +190,20 @@ templates/
   systemd/almapay.service
   compose/
 docs/
-  architecture.md
-  security.md
-  installation.md
+  design.md
+  operator-guide.md
   integrator-guide.md
   reference-integrations/
     arkfile.md
-  wallets-and-plugins.md
-  operations.md
-  backup-and-restore.md
-  troubleshooting.md
   production-readiness.md
+  archive/
+    alma-pay-server-planning.md
 tests/
-  unit/
+  test_compose_model.py
+  test_contract_fixtures.py
+  run.sh
   integration/
+    regtest-bitcoin.sh
   fixtures/
 ```
 
@@ -533,7 +535,7 @@ Runtime verification must query BTCPay and require semantic version 2.4.0 or lat
 
 ## Plugins
 
-Supported optional plugins are:
+Required optional plugin profile deliverables are:
 
 - Monero, when XMR is selected.
 - Boltz in nodeless mode for Lightning.

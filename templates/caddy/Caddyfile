@@ -1,0 +1,10 @@
+# AlmaPay Caddy source template (non-secret).
+# render-caddy replaces the literal placeholder tokens. Access logs are omitted.
+
+{
+	email @@ACME_EMAIL@@
+}
+
+@@DOMAIN@@ {
+	reverse_proxy @@UPSTREAM@@
+}

@@ -1,0 +1,19 @@
+# Generic consumer integration fixture (application-neutral).
+# Used to document expected Greenfield request shape without Arkfile logic.
+
+store_id: "STOREID_EXAMPLE"
+currency: "USD"
+amount: "10.00"
+metadata:
+  invoice_id: "local-opaque-id-001"
+checkout:
+  speedPolicy: "LowMediumSpeed"
+  expirationMinutes: 60
+  redirectURL: "https://app.example.com/payments/return"
+
+expectations:
+  checkout_origin: "https://pay.example.com"
+  settlement_event: "InvoiceSettled"
+  signature_header: "BTCPay-Sig"
+  no_cross_store_access: true
+  idempotent_webhook_replay: true

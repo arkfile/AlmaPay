@@ -1,0 +1,25 @@
+# Negative fixture: public 8080, bitcoin 29, docker.sock, trust auth, tor.
+services:
+  btcpayserver:
+    image: btcpayserver/btcpayserver:2.4.0
+    privileged: true
+    ports:
+      - "8080:49392"
+    environment:
+      BTCPAY_SSHKEYFILE: /root/.ssh/id_rsa
+  postgres:
+    image: btcpayserver/postgres:18.4
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+  bitcoind:
+    image: btcpayserver/bitcoin:29.1
+    environment:
+      CREATE_WALLET: "true"
+      BITCOIN_EXTRA_ARGS: |
+        rpcport=43782
+  tor-gen:
+    image: btcpayserver/docker-compose-generator:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

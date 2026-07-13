@@ -1,36 +1,32 @@
 # AlmaPay
 
-AlmaPay is a deployment and operations toolkit for self-hosted [BTCPay Server](https://btcpayserver.org/) on AlmaLinux 10 and later. Its initial deployment profile is mainnet on x86-64-v3 using rootless Podman, an explicitly pinned external Compose provider, and host-installed Caddy. Integrators communicate with BTCPay through the Greenfield API and signed HTTPS webhooks rather than direct access to chain daemons or payment providers.
+AlmaPay is an application-agnostic toolkit for operating self-hosted [BTCPay Server](https://btcpayserver.org/) on AlmaLinux 10+ with rootless Podman and host-installed Caddy.
 
-## Repository status
+## Status
 
-This repository is in the planning and initial implementation phase. It does not yet provide a production-ready clean-host quick start. Commands in the companion planning runbook contain placeholders and must not be applied to a production host. A runnable quick start will be published only after exact dependency pins, generated Compose output, SELinux behavior, backup and restore, and clean-VM installation have been tested.
+**AlmaPay is not installable or production-ready today.** `upstream.lock` is a candidate lock containing unresolved `PENDING` and `REPLACE` values. The CLI intentionally blocks bootstrap, install, generation, start, and runtime verification until the lock is promoted to `validated` or `production`.
 
-The current documents are:
+Backup, restore, and update deliberately fail closed. `verify --production` is also blocked until plugin, backup/restore, privacy, Greenfield-permission, and webhook checks exist and have been exercised. No AlmaLinux VM integration has run, and agents have no production VPS access.
 
-- [`docs/alma-pay-spec.md`](docs/alma-pay-spec.md): implementation contract and acceptance criteria.
-- [`docs/alma-pay-server.md`](docs/alma-pay-server.md): non-production planning runbook.
-- [`AGENTS.md`](AGENTS.md): mandatory repository guidance for coding agents.
+The intended initial profile is one AlmaLinux 10+ x86-64-v3 host, rootless Podman under `almapay`, BTCPay on `127.0.0.1:8080` behind host Caddy, PostgreSQL with SCRAM, NBXplorer, and local pruned Bitcoin Core 30+. Monero services can be generated, but Monero plugin/custody readiness is not production-proven. Boltz and Stripe can be selected in configuration and have candidate pins, but stable installation and runtime verification are not implemented.
 
-## Initial supported profile
+## Start here
 
-The first supported and tested profile is deliberately narrow:
+- Developer or agent: read [AGENTS.md](AGENTS.md), then the normative [implementation specification](docs/alma-pay-spec.md).
+- Operator: use the [operator guide](docs/operator-guide.md) and [production-readiness checklist](docs/production-readiness.md).
+- Integrator: use the generic [integrator guide](docs/integrator-guide.md); Arkfile users may also read the [Arkfile reference profile](docs/reference-integrations/arkfile.md).
+- Reviewer: read the [design and security model](docs/design.md) with the [implementation specification](docs/alma-pay-spec.md).
 
-- AlmaLinux 10.2 on x86_64 with x86-64-v3 CPU support, with AlmaLinux 10.0 or later as the version floor.
-- A single host running one rootless Podman Compose project.
-- BTCPay Server, PostgreSQL, NBXplorer, and a local pruned Bitcoin node.
-- A shipped local-pruned mainnet Monero profile.
-- Shipped, independently gated Boltz nodeless Lightning and Stripe Payments profiles.
-- Host-installed Caddy as the only public HTTP/TLS entry point.
-- BTCPay published only on the fixed listener `127.0.0.1:8080`.
-- User-systemd persistence under a dedicated unprivileged `almapay` host account.
+Historical planning material is archived and is not active installation guidance.
 
-Mainnet is the only supported deployment network in the first release; regtest and mocks are test fixtures. Other architectures, networks, RHEL-family distributions, alternate reverse proxies, external RPC providers, split-host chain nodes, and other deployment modes are future profiles rather than currently supported configurations.
+## Local tests
 
-The stack is composed of dedicated containers rather than one monolithic container. Caddy remains outside the Compose project. Monero wallet configuration is server-wide in BTCPay; stores that must not share Monero treasury or view-key access require separate BTCPay deployments. AlmaPay automation never enables a payment method automatically; each method requires its own synchronization, custody, backup, restore, and operator-run payment approval.
+```bash
+./tests/run.sh
+```
 
-Plan generously for the complete local profile: approximately 4 vCPU, 8 GB RAM, and 400 GB SSD as an initial planning estimate. Actual requirements must be measured against the selected pinned Bitcoin and Monero pruning profiles, database growth, backups, logs, and update headroom.
+The current suite reports 43 top-level passes, skips ShellCheck when it is unavailable, and runs additional semantic Python subtests. `ALMAPAY_RUN_REGTEST=1 ./tests/run.sh` additionally runs a Bitcoin-only regtest fixture without a chain download; it does not settle a BTCPay invoice and is not a supported deployment profile.
 
-## Privilege and recovery model
+## License
 
-Podman and application backup or restore operations run as `almapay`, never as root. Root-owned host state—such as the active Caddy configuration, firewall policy, subordinate-ID allocation, and SELinux customization—is backed up separately through ordinary host administration tooling. AlmaPay retains a non-secret Caddy source template so the active root-owned configuration can be regenerated during recovery. Production readiness requires a verified encrypted off-host application backup and a tested matching host-recovery bundle; an interactive Arkfile upload may be used initially, but Arkfile must not be the only retained copy.
+See [LICENSE](LICENSE).

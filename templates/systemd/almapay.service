@@ -1,0 +1,20 @@
+[Unit]
+Description=AlmaPay BTCPay Server (Podman Compose)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/var/lib/almapay
+# Rendered installation replaces ALMAPAY_UID with the numeric almapay UID.
+Environment=XDG_RUNTIME_DIR=/run/user/ALMAPAY_UID
+Environment=PODMAN_COMPOSE_PROVIDER=/usr/bin/podman-compose
+Environment=HOME=/var/lib/almapay
+EnvironmentFile=/var/lib/almapay/secrets.env
+ExecStart=/usr/bin/podman compose -f /var/lib/almapay/compose/docker-compose.generated.yml --env-file /var/lib/almapay/.env up -d --remove-orphans
+ExecStop=/usr/bin/podman compose -f /var/lib/almapay/compose/docker-compose.generated.yml --env-file /var/lib/almapay/.env down
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
