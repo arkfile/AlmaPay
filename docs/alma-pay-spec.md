@@ -33,7 +33,7 @@ The implementation must assume:
 
 Version floors are not permission to float dependencies. Every production release must pin exact commits, image digests, package versions, and plugin releases in `upstream.lock`.
 
-The July 10, 2026 research baseline uses the [AlmaLinux 10.2 release notes](https://wiki.almalinux.org/release-notes/10.2), [BTCPay Server 2.4.0 release notes](https://github.com/btcpayserver/btcpayserver/releases/tag/v2.4.0), [Bitcoin Core 30.0 release notes](https://bitcoincore.org/en/releases/30.0/), [Podman Compose documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html), and the current [btcpayserver-docker repository](https://github.com/btcpayserver/btcpayserver-docker). The implementation agent must revalidate them before choosing lockfile pins.
+The July 13, 2026 research baseline uses the [AlmaLinux 10.2 release notes](https://wiki.almalinux.org/release-notes/10.2), [BTCPay Server 2.4.0 release notes](https://github.com/btcpayserver/btcpayserver/releases/tag/v2.4.0), [Bitcoin Core 30.0 release notes](https://bitcoincore.org/en/releases/30.0/), [Podman Compose documentation](https://docs.podman.io/en/latest/markdown/podman-compose.1.html), the [BTCPay Plugin Builder API](https://plugin-builder.btcpayserver.org/docs/), and upstream source at the candidate commits recorded below. Registry and repository observations are candidate pins, not production approval. The implementation agent must revalidate availability and compatibility, inspect source changes, and pass the clean-VM and payment-profile tests before publishing the first release lockfile.
 
 ## Mission and success criteria
 
@@ -334,33 +334,78 @@ platform:
 runtime:
   podman_nevra: "<tested-exact-nevra>"
   compose_provider: podman-compose
-  compose_provider_nevra: "<tested-exact-nevra>"
+  compose_provider_nevra: "podman-compose-1.5.0-1.el10_1"
+  caddy_nevra: "caddy-2.10.2-9.el10_2"
   package_repositories:
     - id: "<repository-id>"
       signing_key_fingerprint: "<verified-fingerprint>"
+      repomd_sha256: "<verified-repository-metadata-sha256>"
+  package_artifacts:
+    - nevra: "<exact-nevra>"
+      source_url: "<immutable-or-archived-rpm-url>"
+      sha256: "<rpm-sha256>"
 
 btcpayserver_docker:
-  commit: "<verified-commit-sha>"
-  generator_image: "btcpayserver/docker-compose-generator@sha256:<digest>"
+  commit: "a25cd38c1e068bc3412b57a359bc84f063230db1"
+  generator:
+    image: "localhost/almapay/docker-compose-generator@sha256:<locally-built-image-digest>"
+    dockerfile_sha256: "<pinned-source-dockerfile-sha256>"
+    builder_base_image: "mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:<digest>"
+    runtime_base_image: "mcr.microsoft.com/dotnet/runtime:10.0.5-noble@sha256:<digest>"
 
 images:
-  btcpayserver: "btcpayserver/btcpayserver:2.4.0@sha256:<manifest-list-and-linux-amd64-digests>"
-  bitcoin_core: "btcpayserver/bitcoin:31.0@sha256:<manifest-list-and-linux-amd64-digests>"
-  nbxplorer: "nicolasdorier/nbxplorer:2.6.8@sha256:<manifest-list-and-linux-amd64-digests>"
-  postgres: "<repository>:<tag>@sha256:<manifest-list-and-linux-amd64-digests>"
-  monero: "<repository>:<tag>@sha256:<manifest-list-and-linux-amd64-digests>"
+  btcpayserver:
+    reference: "btcpayserver/btcpayserver:2.4.0"
+    manifest_digest: "sha256:8861fc45db4992889950771075a71a82e78e5ca382400a23d7989bd1ef618593"
+    linux_amd64_digest: "sha256:d9ae1b5a4bb921636ffae88b2a6f3cf93376f532afe6fb9305d6e3a76ec71edf"
+  bitcoin_core:
+    reference: "btcpayserver/bitcoin:31.0"
+    manifest_digest: "sha256:a753d6fe3d8051ff03015ec77f068d9698b85b9abe8864a783ed22a572c9dcce"
+    linux_amd64_digest: "sha256:cc070dffde3073154b508e95ae64b39f433b41874dd8f2cd49c0d1b4d16a15ff"
+  nbxplorer:
+    reference: "nicolasdorier/nbxplorer:2.6.8"
+    manifest_digest: "sha256:1ae5e23a330659baa9ea8731b93ae0b675aaf9e7add17283c910aa13e8cbaf60"
+    linux_amd64_digest: "sha256:a96d59772471628a00d2ee779c69414591e04d202923a008a405a02dd7893569"
+  postgres:
+    reference: "btcpayserver/postgres:18.4"
+    manifest_digest: "sha256:ee11b4d9b3473a93cf608b37c2090749e55a5354f911b8d18772f962fcfb0bb5"
+    linux_amd64_digest: "sha256:fea63bcc6230c468b4ab8d8f89b853918ac0eb7844bd966323639c4602314d6c"
+  monero:
+    reference: "btcpayserver/monero:0.18.4.3"
+    manifest_digest: "sha256:210af42cff4311e7fc6040116363ea3dc0d0d3d64c938969679a5a00fc752936"
+    linux_amd64_digest: "sha256:3f8925d3f8fb81c37b2537a3099e40c29653b80b88a5ab45f8c6dfa2f9997740"
 
 minimum_versions:
   btcpayserver: "2.4.0"
   bitcoin_core: "30.0"
 
 plugins:
-  monero: "<compatible-version-and-source>"
-  boltz: "<compatible-version-and-source>"
-  stripe: "<compatible-version-and-source>"
+  monero:
+    version: "1.3.0.0"
+    source: "https://github.com/btcpay-monero/btcpayserver-monero-plugin"
+    commit: "f71b1a5a2d8bfedd901f84b7805d13021b6ceedd"
+    builder_build_id: 11
+    builder_build_hash: "5dff2bd1adc2f0eeb11857e289cdf335f53af3fbf7701ec50658ce2673b660c0"
+    minimum_btcpayserver: "2.3.7"
+  boltz:
+    version: "2.4.2"
+    source: "https://github.com/BoltzExchange/boltz-btcpay-plugin"
+    commit: "fce1dfb29830f9dcbc9d51a909d04b294287179d"
+    artifact_sha256: "05a0e8e91ab0a398a02cccb4f1415a28648e1280825b9a868539e1efb3974f84"
+    signing_fingerprint: "8918FFBFFB49E93EF256D930542A7F22A3BD9CB0"
+    minimum_btcpayserver: "2.3.7"
+  stripe:
+    version: "1.0.12.0"
+    source: "https://github.com/Kukks/BTCPayServerPlugins"
+    commit: "969a295a5f410e08f49168ccee2f97bd068d6eb5"
+    builder_build_id: 12
+    builder_build_hash: "233aa5c0d97cbc316e566a2172a7715d9ce94761d33d1e2e655a801dd124d3c7"
+    minimum_btcpayserver: "2.3.7"
 ```
 
-The exact initial pins must be researched and verified when the AlmaPay repository is implemented. Tags provide readability; digests provide immutability. Multi-architecture tags require both the manifest-list digest and the selected linux/amd64 platform digest. The generator image must be proven to correspond to the pinned source commit, or be reproducibly built from that commit. Production commands must never silently consume `latest`, a moving branch, an unavailable package version, or an unverified plugin manifest.
+These values are the corroborated initial candidates observed on July 13, 2026. They must be copied into a release lockfile only after revalidation and testing; later is not automatically better. Tags provide readability, while digests provide immutable image identity. Multi-architecture tags require both the manifest-list digest and selected linux/amd64 platform digest. Package NEVRAs alone are insufficient because ordinary repositories can move or retire artifacts; retain an immutable or archived source URL, RPM checksum, repository metadata checksum, and signing-key fingerprint for every installed package.
+
+The published `btcpayserver/docker-compose-generator:latest` image observed during this research predates the candidate source commit and cannot establish source correspondence. AlmaPay must build the generator with rootless Podman from the pinned commit, replace both Dockerfile base-image tags with reviewed digests, record the resulting image digest, and use only that locally built image for generation. Production commands must never silently consume `latest`, a moving branch, an unavailable package version, tag-only runtime images, or an unverified plugin manifest.
 
 ## Compose generation
 
@@ -373,14 +418,16 @@ BTCPAYGEN_CRYPTO1=btc
 BTCPAYGEN_CRYPTO2=xmr
 BTCPAYGEN_REVERSEPROXY=none
 BTCPAYGEN_LIGHTNING=none
-BTCPAYGEN_EXCLUDE_FRAGMENTS=bitcoin
+BTCPAYGEN_EXCLUDE_FRAGMENTS=bitcoin;opt-add-tor
 BTCPAYGEN_ADDITIONAL_FRAGMENTS=bitcoincore;opt-save-storage-s
 BTCPAY_IMAGE=btcpayserver/btcpayserver:2.4.0
 NBITCOIN_NETWORK=mainnet
 NOREVERSEPROXY_HTTP_PORT=127.0.0.1:8080
 ```
 
-The exclusion and additional fragment are mandatory because the upstream `btc` crypto definition currently maps to `bitcoin.yml`, whose image is below Bitcoin Core 30. The current separate `bitcoincore.yml` fragment uses Core 31.0.
+Both exclusions and the additional fragments are mandatory. The upstream `btc` crypto definition currently maps to `bitcoin.yml`, whose image is below Bitcoin Core 30, while the separate `bitcoincore.yml` fragment uses Core 31.0. The base BTCPay fragment also recommends `opt-add-tor`; that fragment adds `tor-gen` with a `/var/run/docker.sock` mount and is incompatible with AlmaPay's container-engine socket prohibition. Tor is not part of the initial supported profile. A future Tor profile requires a Podman-native design with no engine socket and its own security review and tests.
+
+At the candidate upstream commit, `BTCPAYGEN_REVERSEPROXY=none` selects the upstream `btcpayserver-noreverseproxy.yml` fragment, which publishes `${NOREVERSEPROXY_HTTP_PORT:-80}:49392`. The fixed value above therefore renders the required `127.0.0.1:8080:49392` mapping without an AlmaPay-owned port overlay. AlmaPay must assert that exact rendered mapping and add an overlay only if a future pinned upstream commit no longer supplies equivalent behavior.
 
 Generation must:
 
@@ -388,10 +435,13 @@ Generation must:
 - Use the pinned upstream commit and generator digest.
 - Fetch and check out the pinned upstream commit explicitly; a clone of the current default branch is not a pin.
 - Produce deterministic output from committed configuration and lockfile inputs.
+- Canonicalize and hash the rendered semantic Compose model; byte ordering emitted by upstream collections is not a sufficient determinism guarantee.
 - Preserve the previous generated output before replacement.
 - Produce a human-readable diff.
 - Never edit the upstream checkout in place to conceal required overrides.
 - Store AlmaPay-owned overlays or post-generation validation rules in the AlmaPay repository.
+- Materialize every production service image as the exact locked digest. A digest recorded only in `upstream.lock` while the runnable Compose file still uses a tag is not a pin.
+- Discard the upstream-generated `pull-images.sh` and `save-images.sh`, which invoke Docker and include Docker Compose helper images. If equivalent helpers are needed, generate Podman-native scripts directly from the locked image set.
 - Work with SELinux enforcing. Bind mounts used by the generator must have reviewed read/write access and appropriate private relabeling such as `:Z`; weakening SELinux is not an alternative.
 
 ## Rendered Compose security validation
@@ -401,18 +451,21 @@ Installation and update must inspect the fully rendered Compose model and fail i
 - BTCPay is below 2.4.0.
 - Bitcoin Core is below 30.0.
 - The default Bitcoin 29.x image remains.
+- Any service image is tag-only, differs from its lockfile digest, or is not present in the lockfile.
 - BTCPay is published on `0.0.0.0`, `[::]`, or any non-loopback address.
+- BTCPay's host mapping is not exactly `127.0.0.1:8080:49392`.
 - PostgreSQL, NBXplorer, Bitcoin RPC, Monero RPC, or wallet RPC is host-published.
 - An unexpected host port exists.
 - A container is privileged.
 - Dangerous host bind mounts exist.
 - A container gains unnecessary capabilities.
 - The Podman socket or host SSH material is mounted.
+- A usable BTCPay host-SSH credential, key path, authorized-key mount, or other host SSH integration remains configured.
 - `BITCOIN_EXTRA_ARGS` lost required RPC, peer, memory, or pruning settings.
 - The selected Monero mode does not match the rendered daemon arguments.
 - The Compose file depends on Docker-only behavior unsupported by the pinned provider.
 
-Fragment merging can alter the multiline `BITCOIN_EXTRA_ARGS` value. Tests must prove that the final configuration contains required base RPC settings and the intended prune setting. Do not assume that listing multiple fragments merges scalar environment values correctly.
+Fragment merging can alter the multiline `BITCOIN_EXTRA_ARGS` value. At the candidate commit, `bitcoincore.yml` recommends `opt-mempoolfullrbf`, while `opt-save-storage-s.yml` adds `prune=50000`; the generator concatenates colliding scalar values. Tests must prove that the final configuration contains the required base RPC, peer, and memory settings, `prune=50000`, and `mempoolfullrbf=1`, with no malformed delimiters or duplicate contradictory setting. Do not assume that listing multiple fragments merges scalar environment values correctly.
 
 ## Bitcoin Core 30+ requirements
 
@@ -435,6 +488,8 @@ If all secondary indexes must be rebuilt, operations must use and plan for a ful
 ## NBXplorer and PostgreSQL
 
 NBXplorer must use a release tested with the pinned BTCPay and Bitcoin Core versions. The initial upstream candidate is 2.6.8.
+
+The candidate upstream PostgreSQL fragment sets `POSTGRES_HOST_AUTH_METHOD=trust` and uses passwordless BTCPay and NBXplorer connection strings. AlmaPay must not silently inherit that choice. The initial production implementation must supply and test an AlmaPay-owned authenticated PostgreSQL configuration, prefer SCRAM authentication, keep password placeholders rather than secret values in generated artifacts, and load the actual credential only from protected secret configuration. If authenticated operation cannot be made compatible with the pinned stack, that is a documented production blocker requiring an explicit specification decision; falling back to `trust` is not an implementation shortcut.
 
 Verification must confirm:
 
@@ -490,8 +545,10 @@ Before installation:
 
 - Query the live authenticated plugin manifest or reviewed upstream source.
 - Confirm the exact plugin release declares compatibility with the pinned BTCPay version.
-- Record the release and source in `upstream.lock`.
+- Record the release, source commit, artifact or builder hash, Builder build ID where applicable, declared BTCPay range, and signing fingerprint where available in `upstream.lock`.
 - Verify package integrity where the ecosystem provides signatures or hashes.
+- Prefer the independently signed Boltz GitHub release artifact over a separately rebuilt unsigned directory artifact, and verify its checksum manifest against the locked Boltz signing fingerprint.
+- Treat the unsigned Monero and Stripe Builder artifacts as a provenance gap: pin their source commits and Builder metadata, review the source diff, retain the exact artifact hash, and require integration tests before enablement.
 - Test installation, restart, enablement, and a representative payment.
 
 Plugin installation may be automated only through a stable and tested interface. Otherwise provide precise UI instructions and verify the resulting version and enabled state afterward.
@@ -530,7 +587,9 @@ Requirements:
 - Caddy configuration is validated before reload.
 - Firewall changes preserve the real SSH port and do not risk lockout.
 - Port 8080 and all internal service ports remain unavailable externally.
-- The Arkfile profile leaves Caddy access logging disabled and verifies that neither Caddy, BTCPay, journald, nor AlmaPay diagnostics retain client IP addresses. Because Caddy adds forwarding headers by default, implementation must test the exact pinned Caddy and BTCPay behavior and apply a reviewed header policy if necessary; assumed privacy is not sufficient.
+- The Arkfile profile omits Caddy's `log` directive so HTTP access logging remains disabled by default, and verifies that neither Caddy, BTCPay, journald, nor AlmaPay diagnostics retain client IP addresses.
+- Because Caddy adds `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` by default, implementation must test the exact pinned Caddy and BTCPay behavior before changing headers. Do not strip forwarding headers reflexively if BTCPay needs them for correct origin handling or security controls; apply a reviewed header policy only when the retention tests require it.
+- Privacy tests cover successful requests, rejected requests, upstream failures, Caddy system logs, BTCPay container logs, journald, and generated AlmaPay diagnostics. Assumed privacy or checking only ordinary successful requests is insufficient.
 
 Consumer applications must use the public BTCPay origin for customer-facing checkout links. The loopback origin `127.0.0.1:8080` is an internal Caddy upstream and must never appear in checkout links or integrator configuration. Arkfile additionally requires the public origin for its Content Security Policy.
 
@@ -807,14 +866,22 @@ Repository tests must include:
 - Tests proving runtime commands refuse root.
 - Tests proving no command invokes Docker.
 - Tests proving the selected Compose provider is pinned.
+- Tests proving package artifacts and repository metadata match the lockfile.
 - Tests for subordinate-ID and user-systemd validation.
 - Rendered-Compose security tests.
+- Tests proving every runtime image resolves to the locked manifest and linux/amd64 digest and no tag-only image remains.
 - Tests proving BTCPay binds only to loopback.
+- Tests proving the no-reverse-proxy fragment renders exactly `127.0.0.1:8080:49392`.
 - Tests proving no internal service port is published.
 - Tests proving the default Bitcoin fragment is excluded.
+- Tests proving the incompatible `opt-add-tor` fragment, `tor-gen`, and every container-engine socket mount are absent.
 - Tests proving Bitcoin Core is version 30+.
 - Tests proving required `BITCOIN_EXTRA_ARGS` survive fragment composition.
+- Tests proving PostgreSQL rejects unauthenticated network connections and BTCPay and NBXplorer use the protected authenticated configuration.
+- Tests proving BTCPay host SSH integration has no usable credential or mount.
+- Tests proving Docker-based upstream pull/save helpers are not shipped or executed.
 - Caddy configuration validation.
+- Caddy, BTCPay, journald, failure-path, and diagnostics tests proving the Arkfile profile does not retain client IP addresses.
 - systemd unit validation.
 - Application and host manifest-pairing tests.
 - Paired application and host restore tests.
