@@ -1,6 +1,6 @@
 # HISTORICAL PLANNING DOCUMENT — DO NOT USE FOR INSTALLATION
 
-> **This file is historical-only. Its commands are illustrative, contain obsolete assumptions and placeholders, and are not a supported clean-host procedure. Do not apply them to any production host. Use [the active operator guide](../operator-guide.md) instead.**
+> **This file is historical-only. Its commands are illustrative, contain obsolete assumptions and placeholders, and are not a supported clean-host procedure. Do not apply them to any production host. Use [the active guide](../guide.md) instead.**
 
 This archive preserves the unique planning material formerly published as `docs/alma-pay-server.md`. It described a proposed BTCPay Server 2.4+ deployment on AlmaLinux 10+ using rootless Podman, a non-login `almapay` account, fixed `127.0.0.1:8080`, and host-installed Caddy. It predated the current hardened fail-closed implementation.
 
@@ -146,4 +146,4 @@ The Arkfile profile was intended to omit Caddy access logging and prove that Cad
 
 The document acknowledged that rootless Podman, an external Compose provider, host Caddy, and skipping the upstream setup script were not upstream's standard tested deployment shape. It required separate-store and webhook testing before accepting funds and reserved all low-value mainnet/live payments for a human operator.
 
-These historical observations remain context only. Current status, commands, and gates are authoritative in the [operator guide](../operator-guide.md), [production-readiness checklist](../production-readiness.md), and [implementation specification](../alma-pay-spec.md).
+These historical observations remain context only. Current status, commands, and gates are authoritative in the [guide](../guide.md) and [implementation specification](../alma-pay-spec.md).

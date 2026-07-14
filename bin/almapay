@@ -27,6 +27,10 @@ source "${ALMAPAY_LIB_DIR}/verify.sh"
 source "${ALMAPAY_LIB_DIR}/backup.sh"
 # shellcheck source=../lib/restore.sh
 source "${ALMAPAY_LIB_DIR}/restore.sh"
+# shellcheck source=../lib/lock_research.sh
+source "${ALMAPAY_LIB_DIR}/lock_research.sh"
+# shellcheck source=../lib/configure.sh
+source "${ALMAPAY_LIB_DIR}/configure.sh"
 
 almapay_usage() {
   cat <<'EOF'
@@ -34,7 +38,9 @@ Usage: almapay <command> [args]
 
 Commands:
   doctor              Read-only host prerequisite inspection
-  bootstrap-host      Privileged idempotent host setup (root)
+  bootstrap-host      Privileged idempotent host setup (root; --from-repos)
+  lock-research       Write a staging host lock from this VPS
+  configure           Write almapay.env and secrets.env (interactive or flags)
   install             Validate config, generate compose, install user unit
   generate            Generate/inspect Compose (optional --build-generator)
   research-generator  Print candidate generator lock evidence; never edits lock
@@ -50,6 +56,7 @@ Commands:
   render-caddy        Render AlmaPay Caddy source template
 
 Runtime commands refuse UID 0. Never invoke Docker or sudo podman.
+Host lock default: /var/lib/almapay/upstream.lock (overrides repo candidate lock).
 EOF
 }
 
@@ -150,6 +157,8 @@ main() {
   case "${cmd}" in
     doctor) almapay_doctor_report "$@" ;;
     bootstrap-host) almapay_bootstrap_host "$@" ;;
+    lock-research) almapay_lock_research "$@" ;;
+    configure) almapay_configure "$@" ;;
     install) cmd_install "$@" ;;
     generate) cmd_generate "$@" ;;
     research-generator) cmd_research_generator "$@" ;;

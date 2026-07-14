@@ -8,8 +8,15 @@ ALMAPAY_ROOT="$(cd "${ALMAPAY_LIB_DIR}/.." && pwd)"
 
 ALMAPAY_USER="almapay"
 ALMAPAY_DATA_ROOT="/var/lib/almapay"
+ALMAPAY_CHAINDATA_ROOT="${ALMAPAY_DATA_ROOT}/chaindata"
+ALMAPAY_HOST_LOCK_PATH="${ALMAPAY_DATA_ROOT}/upstream.lock"
 ALMAPAY_LISTEN_FIXED="127.0.0.1:8080"
 ALMAPAY_COMPOSE_PROVIDER_PATH="/usr/bin/podman-compose"
+
+# Prefer a host-specific lock written by lock-research on the deployment VPS.
+if [[ -z "${ALMAPAY_LOCKFILE:-}" && -f "${ALMAPAY_HOST_LOCK_PATH}" ]]; then
+  ALMAPAY_LOCKFILE="${ALMAPAY_HOST_LOCK_PATH}"
+fi
 
 almapay_log() {
   local level="$1"

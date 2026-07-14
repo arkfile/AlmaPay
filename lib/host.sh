@@ -208,6 +208,12 @@ almapay_doctor_report() {
     available_kib="$(df -Pk "${ALMAPAY_DATA_ROOT}" | awk 'NR==2 {print $4}')"
     available_inodes="$(df -Pi "${ALMAPAY_DATA_ROOT}" | awk 'NR==2 {print $4}')"
     almapay_info "data-root capacity: ${available_kib:-unknown} KiB and ${available_inodes:-unknown} inodes available"
+    if [[ "${available_kib:-0}" =~ ^[0-9]+$ && "${available_kib}" -lt 52428800 ]]; then
+      almapay_error "data-root has less than 50 GiB free; mainnet chain sync needs substantially more"
+      status="fail"
+    elif [[ "${available_kib:-0}" =~ ^[0-9]+$ && "${available_kib}" -lt 209715200 ]]; then
+      almapay_warn "data-root has less than 200 GiB free; BTC+Monero+headroom may be tight"
+    fi
   else
     almapay_warn "data-root: ${ALMAPAY_DATA_ROOT} missing (bootstrap-host creates it)"
   fi
@@ -347,6 +353,32 @@ with urllib.request.urlopen(url, context=context, timeout=60) as response:
 PY
 }
 
+almapay_install_packages_from_repos() {
+  local packages=() package installed
+  mapfile -t packages < <(almapay_locked_host_packages)
+  ((${#packages[@]} > 0)) || almapay_die "no locked host packages found"
+  almapay_require_cmd dnf
+  for package in "${packages[@]}"; do
+    if ! rpm -q "${package}" >/dev/null 2>&1; then
+      almapay_info "installing locked package ${package} from repositories"
+      dnf install -y "${package}" ||
+        almapay_die "dnf install failed for locked package ${package}"
+    fi
+    installed="$(rpm -q "${package}")"
+    [[ "${installed}" == "${package}" ]] ||
+      almapay_die "installed ${installed} does not match lock ${package}"
+  done
+}
+
+almapay_ensure_chaindata_dirs() {
+  local subdir
+  for subdir in bitcoin bitcoin-wallet monero postgres btcpay; do
+    install -d -o "${ALMAPAY_USER}" -g "${ALMAPAY_USER}" -m 0750 \
+      "${ALMAPAY_CHAINDATA_ROOT}/${subdir}"
+  done
+  almapay_info "chaindata directories ready under ${ALMAPAY_CHAINDATA_ROOT}"
+}
+
 almapay_install_locked_packages() {
   local cache=/var/cache/almapay/packages
   local artifact nevra url sha rpm_path actual_sha actual_nevra signature_result
@@ -382,23 +414,36 @@ almapay_install_locked_packages() {
 }
 
 almapay_bootstrap_host() {
+  local from_repos=0
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --from-repos) from_repos=1 ;;
+      *) almapay_die "unknown bootstrap-host argument: ${arg}" ;;
+    esac
+  done
+
   if [[ "$(id -u)" -ne 0 ]]; then
     almapay_die "bootstrap-host must run as root"
   fi
 
   almapay_info "bootstrap-host: installing host prerequisites (idempotent)"
-  almapay_require_release_lock
+  almapay_require_bootstrap_lock
 
   local packages=()
   mapfile -t packages < <(almapay_locked_host_packages)
   ((${#packages[@]} > 0)) || almapay_die "no locked host packages found"
-  almapay_install_locked_packages
+
+  if [[ "${from_repos}" -eq 1 || "$(almapay_lock_install_mode)" == "repos" ]]; then
+    almapay_install_packages_from_repos
+  else
+    almapay_install_locked_packages
+  fi
+
   local package installed
   for package in "${packages[@]}"; do
-    installed="$(rpm -q --qf '%{NAME}-%{EPOCHNUM}:%{VERSION}-%{RELEASE}.%{ARCH}\n' "${package}" 2>/dev/null ||
-      rpm -q --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' "${package}" 2>/dev/null ||
-      true)"
-    [[ -n "${installed}" ]] ||
+    installed="$(rpm -q "${package}" 2>/dev/null || true)"
+    [[ "${installed}" == "${package}" ]] ||
       almapay_die "locked package did not install: ${package}"
   done
 
@@ -412,6 +457,7 @@ almapay_bootstrap_host() {
   install -d -o "${ALMAPAY_USER}" -g "${ALMAPAY_USER}" -m 0750 "${ALMAPAY_DATA_ROOT}/compose"
   install -d -o "${ALMAPAY_USER}" -g "${ALMAPAY_USER}" -m 0700 "${ALMAPAY_DATA_ROOT}/secrets"
   install -d -o "${ALMAPAY_USER}" -g "${ALMAPAY_USER}" -m 0750 "${ALMAPAY_DATA_ROOT}/backups"
+  almapay_ensure_chaindata_dirs
 
   if { ! grep -Eq "^${ALMAPAY_USER}:" /etc/subuid ||
        ! grep -Eq "^${ALMAPAY_USER}:" /etc/subgid; } &&
@@ -473,5 +519,5 @@ almapay_bootstrap_host() {
     almapay_info "firewalld zone ${zone}: http/https allowed; SSH ports ${ssh_ports[*]} preserved; 8080 not opened"
   fi
 
-  almapay_info "bootstrap-host: complete. Next: copy config, create secrets.env, run almapay install as operator."
+  almapay_info "bootstrap-host: complete. Next: copy config, create secrets.env, run lock-research --build-generator as ${ALMAPAY_USER} if needed, then almapay install."
 }

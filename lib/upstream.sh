@@ -97,11 +97,11 @@ almapay_assert_lock_status() {
   local status
   status="$(awk '/^status:/{gsub(/[" ]/, "", $2); print $2; exit}' "$(almapay_lockfile_path)")"
   case "${status}" in
-    candidate|validated|production)
+    candidate|staging|validated|production)
       printf '%s\n' "${status}"
       ;;
     *)
-      almapay_die "upstream.lock status must be candidate, validated, or production"
+      almapay_die "upstream.lock status must be candidate, staging, validated, or production"
       ;;
   esac
 }
@@ -110,19 +110,81 @@ almapay_lock_has_placeholders() {
   grep -Eq 'PENDING|REPLACE' "$(almapay_lockfile_path)"
 }
 
-almapay_require_release_lock() {
+almapay_lock_install_mode() {
+  awk '
+    /^runtime:/ { in_runtime=1; next }
+    in_runtime && /^[^ ]/ { in_runtime=0 }
+    in_runtime && /^  install_mode:/ {
+      gsub(/[" ]/, "", $2)
+      print $2
+      exit
+    }
+  ' "$(almapay_lockfile_path)"
+}
+
+almapay_validate_repo_metadata() {
+  grep -Eq 'signing_key_fingerprint:[[:space:]]*"?[0-9A-Fa-f]{40}"?$' \
+    "$(almapay_lockfile_path)" ||
+    almapay_die "lock lacks a verified repository signing-key fingerprint"
+  grep -Eq 'repomd_sha256:[[:space:]]*"?[0-9a-f]{64}"?$' \
+    "$(almapay_lockfile_path)" ||
+    almapay_die "lock lacks a verified repository metadata checksum"
+}
+
+almapay_validate_bootstrap_lock_shape() {
+  local packages=()
+  mapfile -t packages < <(almapay_locked_host_packages)
+  ((${#packages[@]} > 0)) ||
+    almapay_die "lock has no runtime.host_packages"
+
+  local install_mode
+  install_mode="$(almapay_lock_install_mode)"
+  if [[ "${install_mode}" == "repos" ]]; then
+    almapay_validate_repo_metadata
+    return 0
+  fi
+
+  almapay_validate_release_lock_shape
+}
+
+almapay_require_bootstrap_lock() {
   local status
   status="$(almapay_assert_lock_status)"
   case "${status}" in
-    validated|production) ;;
+    staging|validated|production) ;;
     candidate)
-      almapay_die "upstream.lock is candidate-only; installation and runtime require a validated or production lock"
+      almapay_die "upstream.lock is candidate-only; run lock-research on this host or promote the lock"
       ;;
   esac
+  almapay_validate_bootstrap_lock_shape
+}
+
+almapay_require_runtime_lock() {
+  almapay_require_bootstrap_lock
   if almapay_lock_has_placeholders; then
-    almapay_die "upstream.lock contains unresolved PENDING/REPLACE values"
+    almapay_die "lock contains unresolved PENDING/REPLACE values; rerun lock-research --build-generator"
   fi
-  almapay_validate_release_lock_shape
+  almapay_validate_generator_lock_fields
+}
+
+almapay_validate_generator_lock_fields() {
+  local digest builder runtime dockerfile
+  digest="$(almapay_lock_get btcpayserver_docker.generator.image_digest 2>/dev/null || true)"
+  builder="$(almapay_lock_get btcpayserver_docker.generator.builder_base_image 2>/dev/null || true)"
+  runtime="$(almapay_lock_get btcpayserver_docker.generator.runtime_base_image 2>/dev/null || true)"
+  dockerfile="$(almapay_lock_get btcpayserver_docker.generator.dockerfile_sha256 2>/dev/null || true)"
+  [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]] ||
+    almapay_die "lock generator image_digest is missing or invalid"
+  [[ "${builder}" =~ @sha256:[0-9a-f]{64}$ ]] ||
+    almapay_die "lock generator builder_base_image is not digest-pinned"
+  [[ "${runtime}" =~ @sha256:[0-9a-f]{64}$ ]] ||
+    almapay_die "lock generator runtime_base_image is not digest-pinned"
+  [[ "${dockerfile}" =~ ^[0-9a-f]{64}$ ]] ||
+    almapay_die "lock generator dockerfile_sha256 is missing or invalid"
+}
+
+almapay_require_release_lock() {
+  almapay_require_runtime_lock
 }
 
 almapay_require_yaml() {

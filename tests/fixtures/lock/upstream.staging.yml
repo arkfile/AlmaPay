@@ -1,0 +1,62 @@
+status: staging
+platform:
+  distribution: almalinux
+  minimum_major: 10
+  tested_release: "10.2"
+  architecture: x86_64
+  cpu_level: x86-64-v3
+runtime:
+  install_mode: repos
+  compose_provider: podman-compose
+  compose_provider_path: /usr/bin/podman-compose
+  compose_provider_version: "1.5.0"
+  host_packages:
+    - "podman-5.8.0-1.el10.x86_64"
+    - "podman-compose-1.5.0-1.el10_1"
+    - "caddy-2.10.2-9.el10_2"
+    - "python3-3.12.11-2.el10.x86_64"
+    - "python3-pyyaml-6.0.1-7.el10.x86_64"
+    - "git-2.47.3-1.el10.x86_64"
+    - "curl-8.12.1-2.el10.x86_64"
+    - "jq-1.7.1-7.el10.x86_64"
+    - "shadow-utils-2.40.2-1.el10.x86_64"
+    - "firewalld-2.3.0-1.el10.x86_64"
+    - "container-selinux-4.0.0-1.el10.x86_64"
+  package_repositories:
+    - id: "fixture"
+      signing_key_fingerprint: "1111111111111111111111111111111111111111"
+      repomd_sha256: "2222222222222222222222222222222222222222222222222222222222222222"
+  package_artifacts: []
+btcpayserver_docker:
+  commit: "a25cd38c1e068bc3412b57a359bc84f063230db1"
+  generator:
+    image: "localhost/almapay/docker-compose-generator:pinned"
+    image_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    dockerfile_sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    builder_base_image: "example.invalid/sdk@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    runtime_base_image: "example.invalid/runtime@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+images:
+  btcpayserver:
+    reference: "btcpayserver/btcpayserver:2.4.0"
+    manifest_digest: "sha256:8861fc45db4992889950771075a71a82e78e5ca382400a23d7989bd1ef618593"
+    linux_amd64_digest: "sha256:d9ae1b5a4bb921636ffae88b2a6f3cf93376f532afe6fb9305d6e3a76ec71edf"
+  bitcoin_core:
+    reference: "btcpayserver/bitcoin:31.0"
+    manifest_digest: "sha256:a753d6fe3d8051ff03015ec77f068d9698b85b9abe8864a783ed22a572c9dcce"
+    linux_amd64_digest: "sha256:cc070dffde3073154b508e95ae64b39f433b41874dd8f2cd49c0d1b4d16a15ff"
+  nbxplorer:
+    reference: "nicolasdorier/nbxplorer:2.6.8"
+    manifest_digest: "sha256:1ae5e23a330659baa9ea8731b93ae0b675aaf9e7add17283c910aa13e8cbaf60"
+    linux_amd64_digest: "sha256:a96d59772471628a00d2ee779c69414591e04d202923a008a405a02dd7893569"
+  postgres:
+    reference: "btcpayserver/postgres:18.4"
+    manifest_digest: "sha256:ee11b4d9b3473a93cf608b37c2090749e55a5354f911b8d18772f962fcfb0bb5"
+    linux_amd64_digest: "sha256:fea63bcc6230c468b4ab8d8f89b853918ac0eb7844bd966323639c4602314d6c"
+  monero:
+    reference: "btcpayserver/monero:0.18.4.3"
+    manifest_digest: "sha256:210af42cff4311e7fc6040116363ea3dc0d0d3d64c938969679a5a00fc752936"
+    linux_amd64_digest: "sha256:3f8925d3f8fb81c37b2537a3099e40c29653b80b88a5ab45f8c6dfa2f9997740"
+minimum_versions:
+  btcpayserver: "2.4.0"
+  bitcoin_core: "30.0"
+  bitcoin_core_numeric: 300000

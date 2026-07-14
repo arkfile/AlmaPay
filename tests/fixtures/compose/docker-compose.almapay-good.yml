@@ -14,6 +14,8 @@ services:
       BTCPAY_BTCEXPLORERURL: http://nbxplorer:32838/
     expose:
       - "49392"
+    volumes:
+      - "/var/lib/almapay/chaindata/btcpay:/datadir:Z"
   postgres:
     restart: unless-stopped
     image: btcpayserver/postgres@sha256:fea63bcc6230c468b4ab8d8f89b853918ac0eb7844bd966323639c4602314d6c
@@ -29,7 +31,7 @@ services:
     expose:
       - "5432"
     volumes:
-      - "postgres_datadir:/var/lib/postgresql"
+      - "/var/lib/almapay/chaindata/postgres:/var/lib/postgresql:Z"
   nbxplorer:
     restart: unless-stopped
     image: nicolasdorier/nbxplorer@sha256:a96d59772471628a00d2ee779c69414591e04d202923a008a405a02dd7893569
@@ -61,8 +63,8 @@ services:
       - "43782"
       - "39388"
     volumes:
-      - "bitcoin_datadir:/data"
-      - "bitcoin_wallet_datadir:/walletdata"
+      - "/var/lib/almapay/chaindata/bitcoin:/data:Z"
+      - "/var/lib/almapay/chaindata/bitcoin-wallet:/walletdata:Z"
   monerod:
     restart: unless-stopped
     image: btcpayserver/monero@sha256:3f8925d3f8fb81c37b2537a3099e40c29653b80b88a5ab45f8c6dfa2f9997740
@@ -70,10 +72,4 @@ services:
     expose:
       - "18081"
     volumes:
-      - "monero_datadir:/data"
-
-volumes:
-  postgres_datadir:
-  bitcoin_datadir:
-  bitcoin_wallet_datadir:
-  monero_datadir:
+      - "/var/lib/almapay/chaindata/monero:/data:Z"

@@ -4,20 +4,36 @@ AlmaPay is an application-agnostic toolkit for operating self-hosted [BTCPay Ser
 
 ## Status
 
-**AlmaPay is not installable or production-ready today.** `upstream.lock` is a candidate lock containing unresolved `PENDING` and `REPLACE` values. The CLI intentionally blocks bootstrap, install, generation, start, and runtime verification until the lock is promoted to `validated` or `production`.
+**AlmaPay is not production-ready today.** The repository `upstream.lock` remains a candidate lock with unresolved placeholders. Backup, restore, update, and `verify --production` deliberately fail closed. No AlmaLinux VM integration has run.
 
-Backup, restore, and update deliberately fail closed. `verify --production` is also blocked until plugin, backup/restore, privacy, Greenfield-permission, and webhook checks exist and have been exercised. No AlmaLinux VM integration has run, and agents have no production VPS access.
+For a first VPS install attempt, use a host staging lock at `/var/lib/almapay/upstream.lock` with repository bootstrap. Full steps are in the [guide](docs/guide.md#1-install).
 
-The intended initial profile is one AlmaLinux 10+ x86-64-v3 host, rootless Podman under `almapay`, BTCPay on `127.0.0.1:8080` behind host Caddy, PostgreSQL with SCRAM, NBXplorer, and local pruned Bitcoin Core 30+. Monero services can be generated, but Monero plugin/custody readiness is not production-proven. Boltz and Stripe can be selected in configuration and have candidate pins, but stable installation and runtime verification are not implemented.
+## Quick install (staging)
 
-## Start here
+Clone on the VPS, then from the repository directory:
 
-- Developer or agent: read [AGENTS.md](AGENTS.md), then the normative [implementation specification](docs/alma-pay-spec.md).
-- Operator: use the [operator guide](docs/operator-guide.md) and [production-readiness checklist](docs/production-readiness.md).
-- Integrator: use the generic [integrator guide](docs/integrator-guide.md); Arkfile users may also read the [Arkfile reference profile](docs/reference-integrations/arkfile.md).
-- Reviewer: read the [design and security model](docs/design.md) with the [implementation specification](docs/alma-pay-spec.md).
+```bash
+sudo ./bin/almapay doctor
+sudo ./bin/almapay lock-research --install-packages --write /var/lib/almapay/upstream.lock
+sudo ./bin/almapay bootstrap-host --from-repos
+sudo ./bin/almapay configure
+sudo -u almapay -H ./bin/almapay lock-research --build-generator --write /var/lib/almapay/upstream.lock
+sudo -u almapay -H ./bin/almapay install
+sudo ./bin/almapay configure --install-caddy
+sudo -u almapay -H ./bin/almapay start
+sudo -u almapay -H ./bin/almapay verify
+```
 
-Historical planning material is archived and is not active installation guidance.
+Point DNS at the host before public HTTPS verification. See the [guide](docs/guide.md) for configure flags, chaindata preservation, iteration, operations, integration, and the production checklist.
+
+## Documentation
+
+- [Guide](docs/guide.md) — install, commands, architecture, operations, integration, production readiness, troubleshooting
+- [Implementation specification](docs/alma-pay-spec.md) — normative contract
+- [AGENTS.md](AGENTS.md) — guidance for agents and developers
+- [Arkfile reference profile](docs/reference-integrations/arkfile.md) — first reference consumer
+
+Historical planning material is archived under `docs/archive/` and is not active installation guidance.
 
 ## Local tests
 
@@ -25,7 +41,7 @@ Historical planning material is archived and is not active installation guidance
 ./tests/run.sh
 ```
 
-The current suite reports 43 top-level passes, skips ShellCheck when it is unavailable, and runs additional semantic Python subtests. `ALMAPAY_RUN_REGTEST=1 ./tests/run.sh` additionally runs a Bitcoin-only regtest fixture without a chain download; it does not settle a BTCPay invoice and is not a supported deployment profile.
+The current suite reports 53 top-level passes, skips ShellCheck when it is unavailable, and runs additional semantic Python subtests. `ALMAPAY_RUN_REGTEST=1 ./tests/run.sh` additionally runs a Bitcoin-only regtest fixture without a chain download; it does not settle a BTCPay invoice and is not a supported deployment profile.
 
 ## License
 

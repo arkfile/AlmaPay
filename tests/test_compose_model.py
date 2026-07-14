@@ -94,6 +94,15 @@ class ComposeModelTests(unittest.TestCase):
                     for volume in services["btcpayserver"]["volumes"]
                 )
             )
+            bitcoind_volumes = services["bitcoind"]["volumes"]
+            self.assertIn(
+                "/var/lib/almapay/chaindata/bitcoin:/data:Z", bitcoind_volumes
+            )
+            self.assertIn(
+                "/var/lib/almapay/chaindata/bitcoin-wallet:/walletdata:Z",
+                bitcoind_volumes,
+            )
+            self.assertNotIn("volumes", rendered)
 
     def test_dual_public_and_loopback_bind_fails(self):
         path = self.mutate(

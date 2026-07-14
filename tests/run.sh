@@ -109,6 +109,46 @@ source "${ROOT}/lib/btcpay.sh"
 source "${ROOT}/lib/backup.sh"
 # shellcheck source=../lib/restore.sh
 source "${ROOT}/lib/restore.sh"
+# shellcheck source=../lib/configure.sh
+source "${ROOT}/lib/configure.sh"
+
+assert_ok "configure-domain-valid" bash -c '
+  source "'"${ROOT}"'/lib/configure.sh"
+  almapay_configure_domain_valid pay.example.com
+'
+assert_fail "configure-domain-invalid" bash -c '
+  source "'"${ROOT}"'/lib/configure.sh"
+  almapay_configure_domain_valid not_a_domain
+'
+password="$(
+  source "${ROOT}/lib/configure.sh"
+  almapay_generate_postgres_password
+)"
+if ((${#password} >= 24)) && [[ "${password}" =~ ^[0-9a-f]+$ ]]; then
+  pass "configure-generates-postgres-password"
+else
+  fail "configure-generates-postgres-password"
+fi
+if [[ "$(id -u)" -eq 0 ]]; then
+  CONFIGURE_DATA="${TMP_ROOT}/configure-data"
+  export ALMAPAY_DATA_ROOT="${CONFIGURE_DATA}"
+  export ALMAPAY_USER="$(id -un)"
+  assert_ok "configure-noninteractive-write" \
+    almapay_configure --noninteractive --domain pay.example.com --force
+  assert_contains "configure-writes-domain" \
+    "${CONFIGURE_DATA}/almapay.env" '^ALMAPAY_DOMAIN=pay.example.com$'
+  assert_contains "configure-writes-monero-default" \
+    "${CONFIGURE_DATA}/almapay.env" '^ALMAPAY_MONERO_MODE=local-pruned$'
+  assert_contains "configure-writes-postgres-secret" \
+    "${CONFIGURE_DATA}/secrets.env" '^POSTGRES_PASSWORD='
+  if grep -q 'replace-with-long-random-value' "${CONFIGURE_DATA}/secrets.env"; then
+    fail "configure-secrets-not-placeholder"
+  else
+    pass "configure-secrets-not-placeholder"
+  fi
+else
+  printf 'SKIP configure-noninteractive-write (requires root to set ownership)\n'
+fi
 
 assert_fail "reject-docker" almapay_assert_no_docker docker compose up
 assert_fail "reject-docker-compose-provider" almapay_assert_no_docker docker-compose up
@@ -215,9 +255,12 @@ assert_fail_contains "reject-interpolation-unsafe-password" "unsafe for systemd"
 '
 
 export ALMAPAY_LOCKFILE="${ROOT}/upstream.lock"
-assert_fail "candidate-lock-blocks-runtime" almapay_require_release_lock
+assert_fail "candidate-lock-blocks-runtime" almapay_require_runtime_lock
+export ALMAPAY_LOCKFILE="${ROOT}/tests/fixtures/lock/upstream.staging.yml"
+assert_ok "staging-lock-allows-bootstrap" almapay_require_bootstrap_lock
+assert_ok "staging-lock-allows-runtime" almapay_require_runtime_lock
 export ALMAPAY_LOCKFILE="${ROOT}/tests/fixtures/lock/upstream.validated.yml"
-assert_ok "validated-lock-allows-runtime" almapay_require_release_lock
+assert_ok "validated-lock-allows-runtime" almapay_require_runtime_lock
 INVALID_RELEASE_LOCK="${TMP_ROOT}/invalid-release-lock.yml"
 awk '
   /^  package_artifacts:$/ { skip=1; next }
@@ -225,7 +268,7 @@ awk '
   !skip { print }
 ' "${ALMAPAY_LOCKFILE}" >"${INVALID_RELEASE_LOCK}"
 export ALMAPAY_LOCKFILE="${INVALID_RELEASE_LOCK}"
-assert_fail "validated-lock-requires-package-artifacts" almapay_require_release_lock
+assert_fail "validated-lock-requires-package-artifacts" almapay_require_bootstrap_lock
 export ALMAPAY_LOCKFILE="${ROOT}/tests/fixtures/lock/upstream.validated.yml"
 assert_ok "locked-image-reference" bash -c \
   'source "'"${ROOT}"'/lib/common.sh"; source "'"${ROOT}"'/lib/upstream.sh"; export ALMAPAY_LOCKFILE="'"${ALMAPAY_LOCKFILE}"'"; [[ "$(almapay_lock_image_runtime_ref bitcoin_core)" == btcpayserver/bitcoin@sha256:cc070dffde3073154b508e95ae64b39f433b41874dd8f2cd49c0d1b4d16a15ff ]]'

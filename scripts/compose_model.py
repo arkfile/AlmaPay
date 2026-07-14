@@ -18,6 +18,16 @@ POSTGRES_USER_EXPR = "${POSTGRES_USER:-postgres}"
 POSTGRES_DB_EXPR = "${POSTGRES_DB:-postgres}"
 EXPECTED_BTCPAY_PORT = "127.0.0.1:8080:49392"
 FORBIDDEN_INTERNAL_PORTS = {5432, 32838, 43782, 18081, 18082, 18083}
+DEFAULT_DATA_ROOT = "/var/lib/almapay"
+DEFAULT_CHAINDATA_ROOT = f"{DEFAULT_DATA_ROOT}/chaindata"
+
+PERSISTENT_VOLUME_MAP = {
+    "bitcoin_datadir": ("bitcoin", "/data"),
+    "bitcoin_wallet_datadir": ("bitcoin-wallet", "/walletdata"),
+    "monero_datadir": ("monero", "/data"),
+    "postgres_datadir": ("postgres", "/var/lib/postgresql"),
+    "btcpay_datadir": ("btcpay", "/datadir"),
+}
 
 
 class ModelError(ValueError):
@@ -82,6 +92,59 @@ def version_tuple(value: str) -> tuple[int, ...]:
     return tuple(int(part or 0) for part in match.groups())
 
 
+def allowed_chaindata_root(data_root: str) -> str:
+    root = data_root.rstrip("/")
+    if root == DEFAULT_DATA_ROOT:
+        return DEFAULT_CHAINDATA_ROOT
+    return f"{root}/chaindata"
+
+
+def apply_persistent_data_paths(
+    model: dict[str, Any], data_root: str = DEFAULT_DATA_ROOT
+) -> dict[str, Any]:
+    chaindata_root = allowed_chaindata_root(data_root)
+    services = model.get("services")
+    if not isinstance(services, dict):
+        raise ModelError("Compose model has no services mapping")
+
+    converted_names: set[str] = set()
+    for service in services.values():
+        if not isinstance(service, dict):
+            continue
+        volumes = service.get("volumes")
+        if not isinstance(volumes, list):
+            continue
+        rewritten: list[Any] = []
+        for volume in volumes:
+            if isinstance(volume, str):
+                source, sep, target = volume.partition(":")
+                if sep and source in PERSISTENT_VOLUME_MAP:
+                    subdir, expected_target = PERSISTENT_VOLUME_MAP[source]
+                    if target.split(":")[0] != expected_target:
+                        raise ModelError(
+                            f"unexpected target for {source}: {target}"
+                        )
+                    host_path = f"{chaindata_root}/{subdir}"
+                    option_suffix = ""
+                    if ":" in target:
+                        option_suffix = target[target.index(":") :]
+                    elif expected_target in ("/data", "/walletdata", "/datadir", "/var/lib/postgresql"):
+                        option_suffix = ":Z"
+                    rewritten.append(f"{host_path}:{expected_target}{option_suffix}")
+                    converted_names.add(source)
+                    continue
+            rewritten.append(volume)
+        service["volumes"] = rewritten
+
+    top_level = model.get("volumes")
+    if isinstance(top_level, dict):
+        for name in converted_names:
+            top_level.pop(name, None)
+        if not top_level:
+            model.pop("volumes", None)
+    return model
+
+
 def environment_dict(service: dict[str, Any], service_name: str) -> dict[str, Any]:
     environment = service.setdefault("environment", {})
     if environment is None:
@@ -104,7 +167,10 @@ def environment_dict(service: dict[str, Any], service_name: str) -> dict[str, An
 
 
 def render(
-    model: dict[str, Any], lock: dict[str, Any], monero_mode: str | None = None
+    model: dict[str, Any],
+    lock: dict[str, Any],
+    monero_mode: str | None = None,
+    data_root: str = DEFAULT_DATA_ROOT,
 ) -> dict[str, Any]:
     result = copy.deepcopy(model)
     services = result.get("services")
@@ -201,6 +267,7 @@ def render(
         "monerod_wallet",
     }.issubset(services):
         raise ModelError("local-pruned Monero requires monerod and monerod_wallet services")
+    apply_persistent_data_paths(result, data_root)
     return result
 
 
@@ -251,8 +318,13 @@ def as_text(value: Any) -> str:
     return str(value or "")
 
 
-def validate(model: dict[str, Any], lock: dict[str, Any]) -> list[str]:
+def validate(
+    model: dict[str, Any],
+    lock: dict[str, Any],
+    data_root: str = DEFAULT_DATA_ROOT,
+) -> list[str]:
     errors: list[str] = []
+    chaindata_root = allowed_chaindata_root(data_root)
     services = model.get("services")
     if not isinstance(services, dict):
         return ["Compose model has no services mapping"]
@@ -309,6 +381,8 @@ def validate(model: dict[str, Any], lock: dict[str, Any]) -> list[str]:
             if not source:
                 continue
             lowered = str(source).lower()
+            if lowered.startswith(f"{chaindata_root}/"):
+                continue
             if (
                 lowered.startswith("/")
                 or "docker.sock" in lowered
@@ -402,6 +476,7 @@ def main() -> int:
     parser.add_argument(
         "--monero-mode", choices=("disabled", "local-pruned"), default=None
     )
+    parser.add_argument("--data-root", default=DEFAULT_DATA_ROOT)
     args = parser.parse_args()
 
     try:
@@ -410,14 +485,14 @@ def main() -> int:
         if args.action == "render":
             if args.output is None:
                 raise ModelError("--output is required for render")
-            rendered = render(model, lock, args.monero_mode)
-            errors = validate(rendered, lock)
+            rendered = render(model, lock, args.monero_mode, args.data_root)
+            errors = validate(rendered, lock, args.data_root)
             if errors:
                 raise ModelError("\n".join(errors))
             with args.output.open("w", encoding="utf-8") as handle:
                 yaml.safe_dump(rendered, handle, sort_keys=False)
         else:
-            errors = validate(model, lock)
+            errors = validate(model, lock, args.data_root)
             if errors:
                 raise ModelError("\n".join(errors))
     except (OSError, yaml.YAMLError, ModelError) as exc:

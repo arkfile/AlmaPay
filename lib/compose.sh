@@ -20,7 +20,8 @@ almapay_compose_security_validate() {
   almapay_require_yaml
   python3 "$(almapay_compose_model_script)" validate \
     --input "${compose_file}" \
-    --lock "$(almapay_lockfile_path)" ||
+    --lock "$(almapay_lockfile_path)" \
+    --data-root "${ALMAPAY_DATA_ROOT}" ||
     almapay_die "rendered Compose failed semantic security validation"
   almapay_info "compose semantic security validation passed: ${compose_file}"
 }
@@ -35,6 +36,7 @@ almapay_render_compose_model() {
     --input "${source_file}" \
     --lock "$(almapay_lockfile_path)" \
     --monero-mode "${ALMAPAY_MONERO_MODE}" \
+    --data-root "${ALMAPAY_DATA_ROOT}" \
     --output "${temporary}"; then
     rm -f "${temporary}"
     almapay_die "failed to render the AlmaPay Compose model"
@@ -244,6 +246,7 @@ almapay_generate_compose() {
   final="${workdir}/docker-compose.generated.yml"
   previous="${final}.prev"
   mkdir -p "${workdir}"
+  almapay_ensure_chaindata_dirs
 
   almapay_fetch_upstream
   almapay_ensure_generator
